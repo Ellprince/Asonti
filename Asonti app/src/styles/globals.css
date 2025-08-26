@@ -1,0 +1,236 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 14px;
+  /* Brand Colors - Light Mode */
+  --background: #DFE6FF;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #2563EB;
+  --secondary: #60A5FA;
+  --secondary-foreground: #FFFFFF;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #FB923C;
+  --accent-foreground: #FFFFFF;
+  --accent-background: #FED7AA;
+  --gold: #E3AF64;
+  --gold-foreground: #FFFFFF;
+  --destructive: #d4183d;
+  --destructive-foreground: #ffffff;
+  --border: #F3F4F6;
+  --input: transparent;
+  --input-background: #FFFFFF;
+  --switch-background: #cbced4;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #3B82F6;
+  --chart-1: #3B82F6;
+  --chart-2: #60A5FA;
+  --chart-3: #FB923C;
+  --chart-4: #E3AF64;
+  --chart-5: #6B7280;
+  --radius: 0.75rem;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #111827;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #DFE6FF;
+  --sidebar-accent-foreground: #111827;
+  --sidebar-border: #F3F4F6;
+  --sidebar-ring: #3B82F6;
+  /* Typography Scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.25rem;
+  --text-4xl: 3rem;
+  --text-5xl: 3.75rem;
+}
+
+.dark {
+  /* Brand Colors - Dark Mode */
+  --background: #111827;
+  --foreground: #FFFFFF;
+  --card: #1F2937;
+  --card-foreground: #FFFFFF;
+  --popover: #1F2937;
+  --popover-foreground: #FFFFFF;
+  --primary: #60A5FA;
+  --primary-foreground: #111827;
+  --primary-hover: #3B82F6;
+  --secondary: #3B82F6;
+  --secondary-foreground: #FFFFFF;
+  --muted: #374151;
+  --muted-foreground: #9CA3AF;
+  --accent: #FB923C;
+  --accent-foreground: #FFFFFF;
+  --accent-background: #9A3412;
+  --gold: #E3AF64;
+  --gold-foreground: #111827;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #374151;
+  --input: #374151;
+  --input-background: #374151;
+  --ring: #60A5FA;
+  --chart-1: #60A5FA;
+  --chart-2: #3B82F6;
+  --chart-3: #FB923C;
+  --chart-4: #E3AF64;
+  --chart-5: #9CA3AF;
+  --sidebar: #1F2937;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #60A5FA;
+  --sidebar-primary-foreground: #111827;
+  --sidebar-accent: #374151;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #374151;
+  --sidebar-ring: #60A5FA;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-background: var(--accent-background);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/**
+ * Base typography following Asonti AI Brand Guidelines
+ */
+@layer base {
+  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+    /* Hero Heading */
+    h1 {
+      font-size: var(--text-4xl); /* 48px mobile */
+      font-weight: var(--font-weight-medium);
+      line-height: 1.1; /* Tight leading for impact */
+    }
+
+    /* Section Heading */
+    h2 {
+      font-size: var(--text-3xl); /* 36px */
+      font-weight: var(--font-weight-medium);
+      line-height: 1.2;
+    }
+
+    /* Subsection Heading */
+    h3 {
+      font-size: var(--text-lg); /* 20px */
+      font-weight: var(--font-weight-medium);
+      line-height: 1.3;
+    }
+
+    h4 {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.4;
+    }
+
+    /* Body Text */
+    p {
+      font-size: var(--text-base); /* 16px regular, 20px for large */
+      font-weight: var(--font-weight-normal);
+      line-height: 1.6; /* Relaxed for readability */
+    }
+
+    label {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.4;
+    }
+
+    button {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-medium);
+      line-height: 1.4;
+    }
+
+    input {
+      font-size: var(--text-base);
+      font-weight: var(--font-weight-normal);
+      line-height: 1.4;
+    }
+
+    /* Small Text */
+    .text-small {
+      font-size: var(--text-sm); /* 14px */
+      line-height: 1.4;
+    }
+  }
+}
+
+/* Desktop typography adjustments */
+@media (min-width: 1024px) {
+  :where(:not(:has([class*=" text-"]), :not(:has([class^="text-"])))) {
+    h1 {
+      font-size: var(--text-5xl); /* 60px desktop */
+    }
+    
+    /* Large body text for key content */
+    .text-large {
+      font-size: var(--text-lg); /* 20px */
+    }
+  }
+}
+
+html {
+  font-size: var(--font-size);
+}
