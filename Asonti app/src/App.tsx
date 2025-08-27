@@ -5,15 +5,23 @@ import { LeftSidebar } from './components/LeftSidebar';
 import { ChatScreen } from './components/ChatScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { SettingsScreen } from './components/SettingsScreen';
-import { LandingScreen } from './components/LandingScreen';
+import { LandingScreen } from './components/LandingScreen-supabase';
+import { FormerSelfScreen } from './components/FormerSelfScreen';
 import { clearAllAppData, storage } from './components/hooks/useLocalStorage';
 import { Logo } from './components/Logo';
+import { useAuth } from './contexts/AuthContext';
+import { profileMigration } from './utils/profileMigration';
+import { profileGuard } from './services/profileGuard';
+import type { ProfileCompletionStatus } from './services/profileGuard';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
-  const [isRegistered, setIsRegistered] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [checkingProfile, setCheckingProfile] = useState(true);
+  const [showOnboardingMessage, setShowOnboardingMessage] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { user, loading: authLoading, signOut } = useAuth();
 
   // Function to scroll to bottom smoothly
   const scrollToBottom = () => {
@@ -25,14 +33,8 @@ export default function App() {
     }
   };
 
-  // Check registration status and apply dark mode on app load
+  // Check auth status and apply dark mode on app load
   useEffect(() => {
-    const checkRegistration = () => {
-      const registrationData = storage.getItem('user-registration');
-      setIsRegistered(Boolean(registrationData?.isRegistered));
-      setIsLoading(false);
-    };
-
     // Load and apply dark mode setting
     const loadDarkMode = () => {
       const savedSettings = localStorage.getItem('app-settings');
@@ -50,9 +52,80 @@ export default function App() {
       }
     };
 
-    checkRegistration();
     loadDarkMode();
   }, []);
+
+  // Update loading state when auth loading completes
+  useEffect(() => {
+    if (!authLoading) {
+      setIsLoading(false);
+    }
+  }, [authLoading]);
+
+  // Check profile completion status
+  useEffect(() => {
+    const checkProfile = async () => {
+      if (!user) {
+        setCheckingProfile(false);
+        setProfileComplete(false);
+        return;
+      }
+
+      setCheckingProfile(true);
+      const status = await profileGuard.checkProfileCompletion(user.id);
+      setProfileComplete(status.isComplete);
+      setCheckingProfile(false);
+
+      // If no profile, switch to profile tab and show onboarding message
+      if (!status.isComplete) {
+        setActiveTab('profile');
+        setShowOnboardingMessage(true);
+      }
+
+      // Subscribe to profile changes for real-time updates
+      const unsubscribe = await profileGuard.subscribeToProfileChanges(
+        user.id,
+        (newStatus: ProfileCompletionStatus) => {
+          setProfileComplete(newStatus.isComplete);
+          if (newStatus.isComplete) {
+            setShowOnboardingMessage(false);
+          }
+        }
+      );
+
+      return () => {
+        unsubscribe();
+      };
+    };
+
+    checkProfile();
+  }, [user]);
+
+  // Run migration when user logs in
+  useEffect(() => {
+    const runMigration = async () => {
+      if (!user) return;
+      
+      try {
+        const needsMigration = await profileMigration.isMigrationNeeded();
+        if (needsMigration) {
+          console.log('Starting profile migration...');
+          const success = await profileMigration.migrateLocalStorageToSupabase();
+          if (success) {
+            console.log('Profile migration completed successfully');
+            // Optionally clean up after successful migration
+            // profileMigration.cleanupLocalStorage();
+          } else {
+            console.warn('Profile migration failed, will retry on next login');
+          }
+        }
+      } catch (error) {
+        console.error('Error during migration:', error);
+      }
+    };
+
+    runMigration();
+  }, [user]);
 
   // Listen for settings changes to update dark mode
   useEffect(() => {
@@ -124,16 +197,16 @@ export default function App() {
   }, []);
 
   const handleRegistrationComplete = () => {
-    setIsRegistered(true);
+    // Auth state will automatically update via AuthContext
+    // No need to manually set registration state
   };
 
-  const handleLogout = () => {
-    const confirmed = window.confirm('Are you sure you want to log out? Your profile and settings will be preserved.');
+  const handleLogout = async () => {
+    const confirmed = window.confirm('Are you sure you want to log out?');
     if (confirmed) {
       try {
-        // Clear only the user registration data, preserve other data
-        storage.removeItem('user-registration');
-        setIsRegistered(false);
+        const { error } = await signOut();
+        if (error) throw error;
         setActiveTab('chat'); // Reset to chat tab for next login
       } catch (error) {
         console.error('Error during logout:', error);
@@ -156,19 +229,32 @@ export default function App() {
     );
   }
 
-  // Show landing page if not registered
-  if (!isRegistered) {
+  // Show landing page if not authenticated
+  if (!user) {
     return <LandingScreen onRegistrationComplete={handleRegistrationComplete} />;
   }
+
+  const handleTabChange = (newTab: string) => {
+    // Prevent navigation to chat if profile is incomplete
+    if (newTab === 'chat' && !profileComplete) {
+      alert('Please complete your Future Self profile first to start chatting.');
+      setActiveTab('profile');
+      setShowOnboardingMessage(true);
+      return;
+    }
+    setActiveTab(newTab);
+  };
 
   const renderActiveScreen = () => {
     switch (activeTab) {
       case 'chat':
         return <ChatScreen scrollToBottom={scrollToBottom} activeTab={activeTab} />;
       case 'profile':
-        return <ProfileScreen />;
+        return <ProfileScreen showOnboarding={showOnboardingMessage} />;
       case 'settings':
         return <SettingsScreen onLogout={handleLogout} />;
+      case 'former-self':
+        return <FormerSelfScreen />;
       default:
         return <ChatScreen scrollToBottom={scrollToBottom} activeTab={activeTab} />;
     }
@@ -179,8 +265,9 @@ export default function App() {
       {/* Left Sidebar - Only visible on desktop */}
       <LeftSidebar 
         activeTab={activeTab} 
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         onLogout={handleLogout}
+        profileComplete={profileComplete}
       />
 
       {/* Main App Container */}
@@ -190,7 +277,8 @@ export default function App() {
         <div className="hidden md:block lg:hidden">
           <HeaderNavigation 
             activeTab={activeTab} 
-            onTabChange={setActiveTab} 
+            onTabChange={handleTabChange}
+            profileComplete={profileComplete}
           />
         </div>
 
@@ -212,7 +300,8 @@ export default function App() {
         <div className="md:hidden">
           <BottomNavigation 
             activeTab={activeTab} 
-            onTabChange={setActiveTab} 
+            onTabChange={handleTabChange}
+            profileComplete={profileComplete}
           />
         </div>
       </div>

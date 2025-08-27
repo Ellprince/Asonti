@@ -2,11 +2,14 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card } from './ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible';
-import { Sparkles, Share2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Sparkles, Share2, ChevronDown, ChevronUp, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { FutureSelfWizard, type WizardData } from './FutureSelfWizard';
 import { ScrollArea } from './ui/scroll-area';
 import { storage } from './hooks/useLocalStorage';
+import { futureSelfService } from '@/services/futureSelfService';
+import type { FutureSelfProfile } from '@/lib/supabase';
+import { OnboardingMessage } from './OnboardingMessage';
 
 // Character strengths mapping from AttributesStep
 const CHARACTER_STRENGTHS: Record<string, { title: string; description: string; category: string }> = {
@@ -60,57 +63,77 @@ interface FutureSelfData {
   dayInLife?: string;
 }
 
-export function ProfileScreen() {
+interface ProfileScreenProps {
+  showOnboarding?: boolean;
+}
+
+export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
   const [futureSelf, setFutureSelf] = useState<FutureSelfData>({ hasProfile: false });
+  const [profile, setProfile] = useState<FutureSelfProfile | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isStrengthsExpanded, setIsStrengthsExpanded] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showOnboardingMsg, setShowOnboardingMsg] = useState(showOnboarding);
 
-  // Load future self data from localStorage
+  // Update onboarding message visibility when prop changes
+  useEffect(() => {
+    setShowOnboardingMsg(showOnboarding);
+  }, [showOnboarding]);
+
+  // Load future self data from database
   useEffect(() => {
     const loadData = async () => {
+      setIsLoading(true);
+      setError(null);
       try {
-        const savedData = storage.getItem('future-self-data');
-        if (savedData) {
+        const profileData = await futureSelfService.getActiveProfile();
+        if (profileData) {
+          setProfile(profileData);
           setFutureSelf({
-            hasProfile: Boolean(savedData.hasProfile),
-            createdAt: savedData.createdAt,
-            photo: savedData.photo,
-            attributes: savedData.attributes || {},
-            hope: savedData.hope,
-            fear: savedData.fear,
-            currentValues: Array.isArray(savedData.currentValues) ? savedData.currentValues : [],
-            futureValues: Array.isArray(savedData.futureValues) ? savedData.futureValues : [],
-            feelings: savedData.feelings,
-            dayInLife: savedData.dayInLife,
+            hasProfile: true,
+            createdAt: profileData.created_at,
+            photo: profileData.photo_url,
+            attributes: profileData.attributes || {},
+            hope: profileData.hope,
+            fear: profileData.fear,
+            currentValues: Array.isArray(profileData.current_values) ? profileData.current_values : [],
+            futureValues: Array.isArray(profileData.future_values) ? profileData.future_values : [],
+            feelings: profileData.feelings,
+            dayInLife: profileData.day_in_life,
           });
+        } else {
+          // No profile found
+          setFutureSelf({ hasProfile: false });
         }
       } catch (error) {
         console.error('Error loading future self data:', error);
+        setError('Failed to load profile. Please try again.');
+        
+        // Fallback to localStorage if database fails
+        const savedData = storage.getItem('future-self-data');
+        if (savedData) {
+          setFutureSelf(savedData);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     loadData();
-  }, []);
+  }, [retryCount]);
 
-  // Save future self data to localStorage
-  const saveFutureSelfData = (data: FutureSelfData) => {
-    const success = storage.setItem('future-self-data', data);
-    if (success) {
-      setFutureSelf(data);
-    } else {
-      console.error('Failed to save future self data');
-      alert('There was an error saving your profile due to storage limitations. The profile is created but may not persist.');
-      // Still update the UI even if storage failed
-      setFutureSelf(data);
-    }
+  // Reload profile data from database
+  const reloadProfile = () => {
+    setRetryCount(prev => prev + 1);
   };
 
-  const handleWizardComplete = (wizardData: WizardData) => {
+  const handleWizardComplete = async (wizardData: WizardData) => {
     try {
-      const completedProfile: FutureSelfData = {
+      // Profile has already been saved by wizard component
+      // Just update local state and close wizard
+      setFutureSelf({
         hasProfile: true,
         createdAt: new Date().toISOString(),
         photo: wizardData.photo,
@@ -121,13 +144,11 @@ export function ProfileScreen() {
         futureValues: wizardData.futureValues,
         feelings: wizardData.feelings,
         dayInLife: wizardData.dayInLife,
-      };
-      
-      saveFutureSelfData(completedProfile);
+      });
       setShowWizard(false);
       
-      // Clear wizard progress
-      storage.removeItem('future-self-wizard');
+      // Reload profile to get latest data from database
+      reloadProfile();
     } catch (error) {
       console.error('Error completing wizard:', error);
       alert('Your profile was created but there was an error saving it. It may not persist between sessions.');
@@ -245,9 +266,24 @@ Created with Asonti - Your thinking partner`;
   // Loading state
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+      <div className="flex flex-col items-center justify-center h-full p-8" data-testid="profile-loading">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
         <p className="text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error && !futureSelf.hasProfile) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-lg font-medium mb-2">Failed to load profile</h2>
+        <p className="text-muted-foreground mb-4 text-center">{error}</p>
+        <Button onClick={reloadProfile} variant="outline">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Try Again
+        </Button>
       </div>
     );
   }
@@ -514,29 +550,41 @@ Created with Asonti - Your thinking partner`;
 
   // Show initial create button
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8">
-      <div className="text-center mb-8">
-        <div className="w-24 h-24 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-6 mx-auto">
-          <Sparkles className="w-12 h-12 text-primary-foreground" />
+    <div className="flex flex-col h-full">
+      {/* Show onboarding message if flagged */}
+      {showOnboardingMsg && !futureSelf.hasProfile && (
+        <div className="p-4 md:p-6">
+          <OnboardingMessage 
+            onStartProfile={handleStartWizard}
+            onDismiss={() => setShowOnboardingMsg(false)}
+          />
         </div>
-        <h1 className="mb-4">Your Future Self</h1>
-        <p className="text-muted-foreground max-w-sm">
-          Discover who you could become. Create a vision of your future self and get personalized guidance to achieve your goals.
-        </p>
-      </div>
+      )}
+      
+      <div className="flex flex-col items-center justify-center flex-1 p-8">
+        <div className="text-center mb-8">
+          <div className="w-24 h-24 bg-gradient-to-br from-primary to-accent rounded-full flex items-center justify-center mb-6 mx-auto">
+            <Sparkles className="w-12 h-12 text-primary-foreground" />
+          </div>
+          <h1 className="mb-4">Your Future Self</h1>
+          <p className="text-muted-foreground max-w-sm">
+            Discover who you could become. Create a vision of your future self and get personalized guidance to achieve your goals.
+          </p>
+        </div>
 
-      <Button 
-        onClick={handleStartWizard}
-        size="lg"
-        className="w-full max-w-sm"
-      >
-        Create Your Future Self
-      </Button>
+        <Button 
+          onClick={handleStartWizard}
+          size="lg"
+          className="w-full max-w-sm"
+        >
+          Create Your Future Self
+        </Button>
 
-      <div className="mt-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          Build a detailed profile of your aspirations, goals, and the person you want to become.
-        </p>
+        <div className="mt-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            Build a detailed profile of your aspirations, goals, and the person you want to become.
+          </p>
+        </div>
       </div>
     </div>
   );

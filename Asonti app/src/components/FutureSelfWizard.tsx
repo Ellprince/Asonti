@@ -8,8 +8,10 @@ import { DayInLifeStep } from './wizard/DayInLifeStep';
 import { CompletionStep } from './wizard/CompletionStep';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
-import { X, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { X, AlertTriangle, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { storage } from './hooks/useLocalStorage';
+import { futureSelfService } from '@/services/futureSelfService';
+import type { FutureSelfProfile } from '@/lib/supabase';
 
 export interface WizardData {
   photo?: string;
@@ -42,55 +44,109 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
 
   const [storageWarning, setStorageWarning] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Load wizard progress from localStorage
+  // Load wizard progress from database
   useEffect(() => {
-    const savedWizard = storage.getItem('future-self-wizard');
-    if (savedWizard) {
+    const loadProfile = async () => {
+      setIsLoading(true);
       try {
-        setWizardData(prev => ({
-          ...prev,
-          attributes: savedWizard.attributes || {},
-          currentValues: Array.isArray(savedWizard.currentValues) ? savedWizard.currentValues : [],
-          futureValues: Array.isArray(savedWizard.futureValues) ? savedWizard.futureValues : [],
-          currentStep: Math.max(1, Math.min(savedWizard.currentStep || 1, 7)),
-          completed: Boolean(savedWizard.completed),
-          photo: savedWizard.photo,
-          hope: savedWizard.hope,
-          fear: savedWizard.fear,
-          feelings: savedWizard.feelings,
-          dayInLife: savedWizard.dayInLife,
-        }));
+        const profile = await futureSelfService.getOrCreateProfile();
+        if (profile) {
+          setProfileId(profile.id);
+          // Map database fields to wizard data
+          setWizardData(prev => ({
+            ...prev,
+            attributes: profile.attributes || {},
+            currentValues: Array.isArray(profile.current_values) ? profile.current_values : [],
+            futureValues: Array.isArray(profile.future_values) ? profile.future_values : [],
+            currentStep: profile.completed_at ? 7 : Math.max(1, Math.min(prev.currentStep, 7)),
+            completed: Boolean(profile.completed_at),
+            photo: profile.photo_url,
+            hope: profile.hope,
+            fear: profile.fear,
+            feelings: profile.feelings,
+            dayInLife: profile.day_in_life,
+          }));
+        }
       } catch (error) {
-        console.error('Error loading wizard data:', error);
-        setStorageError(true);
+        console.error('Error loading profile:', error);
+        // Fall back to localStorage if database fails
+        const savedWizard = storage.getItem('future-self-wizard');
+        if (savedWizard) {
+          setWizardData(prev => ({
+            ...prev,
+            ...savedWizard,
+            currentValues: Array.isArray(savedWizard.currentValues) ? savedWizard.currentValues : [],
+            futureValues: Array.isArray(savedWizard.futureValues) ? savedWizard.futureValues : [],
+          }));
+        }
+      } finally {
+        setIsLoading(false);
       }
-    }
+    };
+    loadProfile();
   }, []);
 
-  // Save wizard data to localStorage whenever it changes
+  // Save wizard data to database whenever it changes
   useEffect(() => {
-    if (wizardData.currentStep > 0) {
-      const success = storage.setItem('future-self-wizard', wizardData);
-      if (!success) {
-        setStorageWarning(true);
-        // Auto-hide warning after 10 seconds
-        setTimeout(() => setStorageWarning(false), 10000);
-      } else if (storageWarning) {
-        setStorageWarning(false);
+    if (!profileId || wizardData.currentStep === 0 || isLoading) return;
+    
+    const saveToDatabase = async () => {
+      setIsSaving(true);
+      setSaveError(null);
+      try {
+        await futureSelfService.saveWizardProgress(wizardData.currentStep, {
+          photo_url: wizardData.photo,
+          attributes: wizardData.attributes,
+          hope: wizardData.hope,
+          fear: wizardData.fear,
+          current_values: wizardData.currentValues,
+          future_values: wizardData.futureValues,
+          feelings: wizardData.feelings,
+          day_in_life: wizardData.dayInLife,
+        });
+      } catch (error) {
+        console.error('Error saving to database:', error);
+        setSaveError('Failed to save progress. Your changes are saved locally.');
+        // Fallback to localStorage
+        const success = storage.setItem('future-self-wizard', wizardData);
+        if (!success) {
+          setStorageWarning(true);
+          setTimeout(() => setStorageWarning(false), 10000);
+        }
+      } finally {
+        setIsSaving(false);
       }
-    }
-  }, [wizardData, storageWarning]);
+    };
+    
+    // Debounce saves to avoid too many requests
+    const timer = setTimeout(saveToDatabase, 500);
+    return () => clearTimeout(timer);
+  }, [wizardData, profileId, isLoading]);
 
   const updateWizardData = (updates: Partial<WizardData>) => {
     setWizardData(prev => ({ ...prev, ...updates }));
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
     if (wizardData.currentStep < 6) {
       updateWizardData({ currentStep: wizardData.currentStep + 1 });
+    } else if (wizardData.currentStep === 6) {
+      // Move to completion step
+      updateWizardData({ currentStep: 7 });
     } else {
-      // Handle completion after step 6 (Day in Life)
+      // Handle final completion
+      if (profileId) {
+        try {
+          await futureSelfService.completeWizard(profileId);
+        } catch (error) {
+          console.error('Error completing wizard:', error);
+        }
+      }
       const completedData = { ...wizardData, completed: true };
       updateWizardData({ completed: true });
       onComplete(completedData);
@@ -104,11 +160,18 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
   };
 
   const handleCancel = () => {
-    storage.removeItem('future-self-wizard');
+    // Keep data in database, just exit the wizard
     onCancel();
   };
 
-  const handleCompletion = () => {
+  const handleCompletion = async () => {
+    if (profileId) {
+      try {
+        await futureSelfService.completeWizard(profileId);
+      } catch (error) {
+        console.error('Error completing wizard:', error);
+      }
+    }
     const completedData = { ...wizardData, completed: true };
     updateWizardData({ completed: true });
     onComplete(completedData);
@@ -256,8 +319,33 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
     );
   };
 
+  // Show loading state while fetching profile
+  if (isLoading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
+      {/* Save status indicator */}
+      {isSaving && (
+        <div className="absolute top-4 right-4 flex items-center gap-2 bg-background/95 px-3 py-1.5 rounded-md border shadow-sm z-10">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span className="text-xs">Saving...</span>
+        </div>
+      )}
+      
+      {/* Save error */}
+      {saveError && (
+        <div className="p-2 bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-900">
+          <p className="text-xs text-red-600 dark:text-red-400 text-center">{saveError}</p>
+        </div>
+      )}
+
       {/* Storage Warnings */}
       {(storageWarning || storageError) && (
         <div className="p-3 bg-orange-100 dark:bg-orange-900 border-b border-orange-200 dark:border-orange-800">
@@ -318,7 +406,7 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
           <div className="flex justify-between items-center max-w-md mx-auto">
             <div>
               {wizardData.currentStep > 1 && (
-                <Button variant="outline" onClick={prevStep}>
+                <Button variant="outline" onClick={prevStep} disabled={isSaving}>
                   <ArrowLeft className="w-4 h-4 mr-2" />
                   Back
                 </Button>
@@ -329,21 +417,39 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
               {wizardData.currentStep < 6 && (
                 <Button 
                   onClick={nextStep} 
-                  disabled={!canProceedToNext()}
+                  disabled={!canProceedToNext() || isSaving}
                   className="min-w-24"
                 >
-                  Next
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      Next
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </>
+                  )}
                 </Button>
               )}
               {wizardData.currentStep === 6 && (
                 <Button 
                   onClick={nextStep} 
-                  disabled={!canProceedToNext()}
+                  disabled={!canProceedToNext() || isSaving}
                   className="min-w-24"
                 >
-                  Complete
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      Complete
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </>
+                  )}
                 </Button>
               )}
             </div>
