@@ -12,6 +12,7 @@ import { Logo } from './components/Logo';
 import { useAuth } from './contexts/AuthContext';
 import { profileMigration } from './utils/profileMigration';
 import { profileGuard } from './services/profileGuard';
+import { ToastProvider } from './components/ui/use-toast';
 import type { ProfileCompletionStatus } from './services/profileGuard';
 
 export default function App() {
@@ -231,7 +232,11 @@ export default function App() {
 
   // Show landing page if not authenticated
   if (!user) {
-    return <LandingScreen onRegistrationComplete={handleRegistrationComplete} />;
+    return (
+      <ToastProvider>
+        <LandingScreen onRegistrationComplete={handleRegistrationComplete} />
+      </ToastProvider>
+    );
   }
 
   const handleTabChange = (newTab: string) => {
@@ -261,50 +266,52 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen bg-background flex">
-      {/* Left Sidebar - Only visible on desktop */}
-      <LeftSidebar 
-        activeTab={activeTab} 
-        onTabChange={handleTabChange}
-        onLogout={handleLogout}
-        profileComplete={profileComplete}
-      />
+    <ToastProvider>
+      <div className="h-screen bg-background flex">
+        {/* Left Sidebar - Only visible on desktop */}
+        <LeftSidebar 
+          activeTab={activeTab} 
+          onTabChange={handleTabChange}
+          onLogout={handleLogout}
+          profileComplete={profileComplete}
+        />
 
-      {/* Main App Container */}
-      <div className="flex-1 flex flex-col">
-        
-        {/* Header Navigation - Hidden on mobile and desktop, visible on tablet only */}
-        <div className="hidden md:block lg:hidden">
-          <HeaderNavigation 
-            activeTab={activeTab} 
-            onTabChange={handleTabChange}
-            profileComplete={profileComplete}
-          />
-        </div>
+        {/* Main App Container */}
+        <div className="flex-1 flex flex-col">
+          
+          {/* Header Navigation - Hidden on mobile and desktop, visible on tablet only */}
+          <div className="hidden md:block lg:hidden">
+            <HeaderNavigation 
+              activeTab={activeTab} 
+              onTabChange={handleTabChange}
+              profileComplete={profileComplete}
+            />
+          </div>
 
-        {/* Main content area */}
-        <div 
-          ref={scrollContainerRef}
-          className={`flex-1 overflow-x-hidden ${
-            activeTab === 'chat' ? 'pb-0 md:pb-0 lg:pb-0 lg:overflow-hidden' : 'pb-20 md:pb-0 lg:pb-0 overflow-y-auto'
-          }`}
-        >
-          <div className="h-full">
+          {/* Main content area */}
+          <div 
+            ref={scrollContainerRef}
+            className={`flex-1 overflow-x-hidden ${
+              activeTab === 'chat' ? 'pb-0 md:pb-0 lg:pb-0 lg:overflow-hidden' : 'pb-20 md:pb-0 lg:pb-0 overflow-y-auto'
+            }`}
+          >
             <div className="h-full">
-              {renderActiveScreen()}
+              <div className="h-full">
+                {renderActiveScreen()}
+              </div>
             </div>
           </div>
-        </div>
-        
-        {/* Bottom navigation - Only visible on mobile */}
-        <div className="md:hidden">
-          <BottomNavigation 
-            activeTab={activeTab} 
-            onTabChange={handleTabChange}
-            profileComplete={profileComplete}
-          />
+          
+          {/* Bottom navigation - Only visible on mobile */}
+          <div className="md:hidden">
+            <BottomNavigation 
+              activeTab={activeTab} 
+              onTabChange={handleTabChange}
+              profileComplete={profileComplete}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

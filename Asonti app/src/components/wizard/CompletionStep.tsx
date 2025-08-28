@@ -1,12 +1,20 @@
+import { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card } from '../ui/card';
 import { Separator } from '../ui/separator';
 import { ScrollArea } from '../ui/scroll-area';
-import { Sparkles, Download, Share2 } from 'lucide-react';
+import { Sparkles, Download, Share2, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { photoUploadService } from '../../services/photoUploadService';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { useToast } from '../ui/use-toast';
 
 interface WizardData {
   photo?: string;
+  agedPhotoUrl?: string;
+  originalPhotoUrl?: string;
   attributes: Record<string, 'have_now' | 'want_to_develop' | 'not_me'>;
   hope?: string;
   fear?: string;
@@ -22,9 +30,47 @@ interface CompletionStepProps {
 }
 
 export function CompletionStep({ wizardData, onComplete }: CompletionStepProps) {
+  const [revealAged, setRevealAged] = useState(false);
+  const [agedPhotoUrl, setAgedPhotoUrl] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  
+  // Check for aged photo on mount
+  useEffect(() => {
+    const checkForAgedPhoto = async () => {
+      // First check localStorage for recently aged photo
+      const localAged = localStorage.getItem('aged-photo-url');
+      if (localAged) {
+        setAgedPhotoUrl(localAged);
+        return;
+      }
+      
+      // Otherwise check database
+      if (user?.id) {
+        const aged = await photoUploadService.getAgedPhotoUrl(user.id);
+        if (aged) {
+          setAgedPhotoUrl(aged);
+        }
+      }
+    };
+    
+    checkForAgedPhoto();
+    
+    // Dramatic reveal after 1 second
+    const timer = setTimeout(() => {
+      setRevealAged(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [user]);
+  
   // Ensure we have valid data structures
+  // Always prefer aged photo if available
+  const displayPhoto = agedPhotoUrl || wizardData?.agedPhotoUrl || wizardData?.photo;
   const safeWizardData = {
-    photo: wizardData?.photo,
+    photo: displayPhoto,
+    originalPhoto: wizardData?.photo,
+    isAged: Boolean(agedPhotoUrl || wizardData?.agedPhotoUrl),
     attributes: wizardData?.attributes || {},
     hope: wizardData?.hope,
     fear: wizardData?.fear,
@@ -34,8 +80,16 @@ export function CompletionStep({ wizardData, onComplete }: CompletionStepProps) 
     dayInLife: wizardData?.dayInLife,
   };
 
-  // Render avatar based on photo type
+  // Render avatar based on photo type with reveal animation
   const renderAvatar = () => {
+    if (!revealAged) {
+      return (
+        <div className="w-30 h-30 rounded-full mx-auto" style={{ width: '120px', height: '120px' }}>
+          <div className="animate-pulse bg-gray-200 dark:bg-gray-700 rounded-full w-full h-full" />
+        </div>
+      );
+    }
+    
     if (!safeWizardData.photo) {
       // Default avatar
       const avatarStyle: React.CSSProperties = {
@@ -75,15 +129,31 @@ export function CompletionStep({ wizardData, onComplete }: CompletionStepProps) 
       );
     }
 
-    // Real photo
+    // Real photo with aged effect reveal
     return (
-      <div className="w-30 h-30 rounded-full overflow-hidden mx-auto" style={{ width: '120px', height: '120px' }}>
-        <img
-          src={safeWizardData.photo}
-          alt="Your photo"
-          className="w-full h-full object-cover"
-        />
-      </div>
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+          transition={{ duration: 0.8 }}
+          className="w-30 h-30 rounded-full overflow-hidden mx-auto relative"
+          style={{ width: '120px', height: '120px' }}
+        >
+          <img
+            src={safeWizardData.photo}
+            alt="Your future self"
+            className="w-full h-full object-cover"
+          />
+          {agedPhotoUrl && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent rounded-full"
+            />
+          )}
+        </motion.div>
+      </AnimatePresence>
     );
   };
 
@@ -147,6 +217,64 @@ Created: ${new Date().toLocaleDateString()}
     alert('Sharing feature coming soon!');
   };
 
+  const handleCompleteWithAnalysis = async () => {
+    try {
+      setIsAnalyzing(true);
+      
+      // Get the auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast({
+          title: "Session expired",
+          description: "Please log in again to continue.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Trigger personality analysis
+      const response = await fetch('/api/analyze-personality', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          attributes: safeWizardData.attributes,
+          currentValues: safeWizardData.currentValues,
+          futureValues: safeWizardData.futureValues,
+          hope: safeWizardData.hope,
+          fear: safeWizardData.fear,
+          feelings: safeWizardData.feelings,
+          dayInLife: safeWizardData.dayInLife,
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
+      
+      toast({
+        title: "Profile created successfully!",
+        description: "Your AI future self is ready to chat.",
+      });
+      
+      // Complete the wizard
+      onComplete();
+      
+    } catch (error) {
+      console.error('Personality analysis error:', error);
+      // Still allow user to continue even if analysis fails
+      toast({
+        title: "Profile created",
+        description: "AI personalization will improve over time.",
+      });
+      onComplete();
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -154,10 +282,18 @@ Created: ${new Date().toLocaleDateString()}
         <div className="mb-4">
           {renderAvatar()}
         </div>
-        <h1 className="mb-2">Your Future Self Profile</h1>
-        <p className="text-muted-foreground">
-          Congratulations! You've created a comprehensive vision of your future self.
-        </p>
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <h1 className="mb-2">Meet Your Future Self</h1>
+          <p className="text-muted-foreground">
+            {safeWizardData.isAged 
+              ? "This is you, 2 years from now. Your AI companion is ready."
+              : "Congratulations! You've created a comprehensive vision of your future self."}
+          </p>
+        </motion.div>
       </div>
 
       {/* Content */}
@@ -263,9 +399,22 @@ Created: ${new Date().toLocaleDateString()}
             Share
           </Button>
         </div>
-        <Button onClick={onComplete} className="w-full">
-          <Sparkles className="w-4 h-4 mr-2" />
-          Complete & Save Profile
+        <Button 
+          onClick={handleCompleteWithAnalysis} 
+          className="w-full"
+          disabled={isAnalyzing}
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Analyzing your personality...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Complete & Save Profile
+            </>
+          )}
         </Button>
       </div>
     </div>

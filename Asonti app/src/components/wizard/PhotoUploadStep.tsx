@@ -1,6 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Camera, Upload, User, AlertTriangle } from 'lucide-react';
+import { photoUploadService } from '../../services/photoUploadService';
+import { photoAgingService } from '../../services/photoAgingService';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface PhotoUploadStepProps {
   currentPhoto?: string;
@@ -48,44 +52,115 @@ export function PhotoUploadStep({ currentPhoto, onPhotoChange }: PhotoUploadStep
   const [dragOver, setDragOver] = useState(false);
   const [storageWarning, setStorageWarning] = useState(false);
   const [isSimulatedPhoto, setIsSimulatedPhoto] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [agingInBackground, setAgingInBackground] = useState(false);
+  const [agingComplete, setAgingComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [predictionId, setPredictionId] = useState<string | null>(null);
+  const { user } = useAuth();
 
-  const handleFileSelect = (file: File) => {
+  // Listen for aging completion events
+  useEffect(() => {
+    if (!predictionId) return;
+    
+    const handleAgingComplete = (data: any) => {
+      if (data.predictionId === predictionId) {
+        setAgingComplete(true);
+        setAgingInBackground(false);
+        // Store the aged URL in localStorage for the CompletionStep
+        localStorage.setItem('aged-photo-url', data.agedUrl);
+        
+        // Show subtle animation
+        showAgingAnimation();
+      }
+    };
+    
+    const handleAgingFailed = (data: any) => {
+      if (data.predictionId === predictionId) {
+        // Silently fallback to original
+        setAgingInBackground(false);
+        // Clear any aged photo URL
+        localStorage.removeItem('aged-photo-url');
+      }
+    };
+    
+    photoUploadService.on('aging-complete', handleAgingComplete);
+    photoUploadService.on('aging-failed', handleAgingFailed);
+    
+    return () => {
+      photoUploadService.off('aging-complete', handleAgingComplete);
+      photoUploadService.off('aging-failed', handleAgingFailed);
+    };
+  }, [predictionId, onPhotoChange]);
+  
+  const showAgingAnimation = () => {
+    const element = document.getElementById('photo-preview');
+    if (element) {
+      element.classList.add('aging-complete-animation');
+      setTimeout(() => {
+        element.classList.remove('aging-complete-animation');
+      }, 2000);
+    }
+  };
+
+  const handleFileSelect = async (file: File) => {
     if (file && file.type.startsWith('image/')) {
+      setError(null);
+      
+      // Show preview immediately
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
-        
-        // Check if we have storage space
-        if (!checkLocalStorageSpace()) {
-          // Generate a simulated photo instead
-          const avatar = generateAvatarPlaceholder(file.name + file.size);
-          const simulatedPhoto = `simulated-avatar:${avatar.emoji}:${avatar.background}`;
-          
-          setStorageWarning(true);
-          setIsSimulatedPhoto(true);
-          onPhotoChange(simulatedPhoto);
-          
-          // Hide warning after 5 seconds
-          setTimeout(() => setStorageWarning(false), 5000);
-        } else {
-          try {
-            // Try to store the actual image
-            onPhotoChange(result);
-            setIsSimulatedPhoto(false);
-          } catch (error) {
-            // If storage fails, fallback to simulated photo
-            const avatar = generateAvatarPlaceholder(file.name + file.size);
-            const simulatedPhoto = `simulated-avatar:${avatar.emoji}:${avatar.background}`;
-            
-            setStorageWarning(true);
-            setIsSimulatedPhoto(true);
-            onPhotoChange(simulatedPhoto);
-            
-            setTimeout(() => setStorageWarning(false), 5000);
-          }
-        }
+        onPhotoChange(result);
       };
       reader.readAsDataURL(file);
+      
+      // If user is authenticated, upload to Supabase and age photo
+      if (user?.id) {
+        try {
+          setUploading(true);
+          
+          // Upload photo to Supabase Storage
+          const fileName = `${user.id}/${Date.now()}-${file.name}`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('future-self-photos')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
+          
+          if (uploadError) throw uploadError;
+          
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('future-self-photos')
+            .getPublicUrl(fileName);
+          
+          onPhotoChange(publicUrl); // Use original immediately
+          setUploading(false);
+          
+          // Start aging in background using Edge Function
+          setAgingInBackground(true);
+          const agingResult = await photoAgingService.agePhoto(publicUrl);
+          
+          if (agingResult.success && agingResult.agedPhotoUrl) {
+            // Store aged URL for CompletionStep
+            localStorage.setItem('aged-photo-url', agingResult.agedPhotoUrl);
+            setAgingComplete(true);
+            showAgingAnimation();
+          }
+          setAgingInBackground(false);
+          
+        } catch (error: any) {
+          console.error('Photo upload/aging error:', error);
+          setError(error.message);
+          setUploading(false);
+          setAgingInBackground(false);
+        }
+      } else {
+        // Fallback to local storage for users without auth/API
+        setIsSimulatedPhoto(false);
+      }
     }
   };
 
@@ -174,15 +249,27 @@ export function PhotoUploadStep({ currentPhoto, onPhotoChange }: PhotoUploadStep
         {currentPhoto ? (
           // Show uploaded photo or simulated avatar
           <div className="text-center">
-            {renderPhoto()}
-            <div className="space-y-2">
-              <Button variant="outline" onClick={triggerFileInput}>
+            <div className="relative" id="photo-preview">
+              {renderPhoto()}
+              {uploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                  <div className="text-white text-sm">Uploading...</div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2 mt-4">
+              <Button variant="outline" onClick={triggerFileInput} disabled={uploading}>
                 <Upload className="w-4 h-4 mr-2" />
                 Change Photo
               </Button>
               {isCurrentPhotoSimulated && (
                 <p className="text-xs text-muted-foreground">
                   Personalized avatar created due to storage limitations
+                </p>
+              )}
+              {error && (
+                <p className="text-xs text-destructive">
+                  {error}
                 </p>
               )}
             </div>

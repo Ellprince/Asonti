@@ -132,8 +132,8 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
   const handleWizardComplete = async (wizardData: WizardData) => {
     try {
       // Profile has already been saved by wizard component
-      // Just update local state and close wizard
-      setFutureSelf({
+      // Update local state and localStorage
+      const updatedFutureSelf = {
         hasProfile: true,
         createdAt: new Date().toISOString(),
         photo: wizardData.photo,
@@ -144,7 +144,13 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
         futureValues: wizardData.futureValues,
         feelings: wizardData.feelings,
         dayInLife: wizardData.dayInLife,
-      });
+      };
+      
+      setFutureSelf(updatedFutureSelf);
+      
+      // IMPORTANT: Update localStorage so ChatScreen knows the profile is complete
+      storage.setItem('future-self-data', updatedFutureSelf);
+      
       setShowWizard(false);
       
       // Reload profile to get latest data from database

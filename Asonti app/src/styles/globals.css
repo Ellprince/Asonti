@@ -1,5 +1,22 @@
 @custom-variant dark (&:is(.dark *));
 
+/* Aging animation for photo enhancement */
+@keyframes aging-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px 10px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+.aging-complete-animation {
+  animation: aging-glow 2s ease-out;
+}
+
 :root {
   --font-size: 14px;
   /* Brand Colors - Light Mode */

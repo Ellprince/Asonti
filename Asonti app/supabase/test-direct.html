@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Edge Function</title>
+</head>
+<body>
+    <h1>Test Edge Function Directly</h1>
+    <button onclick="testFunction()">Test Chat Function</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testFunction() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                // First test: Simple OPTIONS request (CORS preflight)
+                const optionsResponse = await fetch('https://epmopmfwauwcctnlrrbo.supabase.co/functions/v1/chat-with-future-self', {
+                    method: 'OPTIONS'
+                });
+                
+                resultEl.textContent += '\nOPTIONS request status: ' + optionsResponse.status;
+                
+                // Second test: GET request to check if function exists
+                const getResponse = await fetch('https://epmopmfwauwcctnlrrbo.supabase.co/functions/v1/chat-with-future-self', {
+                    method: 'GET',
+                    headers: {
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwbW9wbWZ3YXV3Y2N0bmxycmJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYyODY4NDAsImV4cCI6MjA3MTg2Mjg0MH0.mHF7irW0m5ZfeUO3KH1hB0Y_Vul8HjTJdKMJLVUDO3I'
+                    }
+                });
+                
+                resultEl.textContent += '\nGET request status: ' + getResponse.status;
+                const getText = await getResponse.text();
+                resultEl.textContent += '\nGET response: ' + getText;
+                
+            } catch (error) {
+                resultEl.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

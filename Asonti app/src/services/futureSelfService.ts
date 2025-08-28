@@ -171,21 +171,23 @@ export class FutureSelfService {
   async getActiveProfile(): Promise<FutureSelfProfile | null> {
     const session = await this.ensureSession();
     
-    const { data: profile, error } = await supabase
+    const { data: profiles, error } = await supabase
       .from('future_self_profiles')
       .select('*')
       .eq('user_id', session.user.id)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
     
     if (error) {
+      console.error('Error fetching active profile:', error);
       if (error.code === 'PGRST116') {
         return null; // No profile found
       }
-      this.handleError(error);
+      // Don't throw, just return null on other errors
+      return null;
     }
     
-    return profile;
+    // Return first active profile or null
+    return profiles && profiles.length > 0 ? profiles[0] : null;
   }
 
   /**

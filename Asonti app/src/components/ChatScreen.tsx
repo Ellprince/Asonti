@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Mic } from 'lucide-react';
+import { Send, Mic, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ScrollArea } from './ui/scroll-area';
 import { storage } from './hooks/useLocalStorage';
+import { aiChatClient } from '@/services/aiChatClient';
+import { TypingIndicator } from './TypingIndicator';
+import { StreamingText } from './StreamingText';
 
 interface Message {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: Date;
+  isStreaming?: boolean;
 }
 
 interface FutureSelfData {
@@ -26,6 +30,9 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [futureSelf, setFutureSelf] = useState<FutureSelfData>({ hasProfile: false });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const desktopScrollRef = useRef<HTMLDivElement>(null);
 
   // Load profile data for avatar
@@ -49,6 +56,8 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
           timestamp: new Date(msg.timestamp)
         }));
         setMessages(parsedMessages);
+        // Sync with chat service for context
+        aiChatClient.setHistory(parsedMessages);
       } catch (error) {
         console.error('Error loading messages from localStorage:', error);
         // Set default welcome message if loading fails
@@ -169,8 +178,8 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
     return () => clearTimeout(timer);
   }, [messages, scrollToBottom]);
 
-  const handleSendMessage = () => {
-    if (!inputText.trim()) return;
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -181,27 +190,58 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
 
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
+    setIsLoading(true);
+    setIsTyping(true);
+    setError(null);
 
-    // Simulate AI response with more varied responses
-    setTimeout(() => {
-      const responses = [
-        'This is a mock response. In a real app, this would connect to an LLM service.',
-        'I understand your question. Here\'s what I think about that topic...',
-        'That\'s an interesting point. Let me provide some insights on that.',
-        'Based on what you\'re asking, I would suggest considering these aspects...',
-        'Great question! Here\'s my perspective on this matter.',
-      ];
+    try {
+      // Send message to AI service
+      const { response, error: apiError } = await aiChatClient.sendMessage(userMessage.text);
       
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+      if (apiError) {
+        console.warn('AI service notice:', apiError);
+      }
       
-      const aiResponse: Message = {
+      // Stop typing indicator and add streaming response with a small delay
+      const aiResponseId = (Date.now() + 1).toString();
+      
+      setTimeout(() => {
+        setIsTyping(false);
+        
+        const aiResponse: Message = {
+          id: aiResponseId,
+          text: response,
+          isUser: false,
+          timestamp: new Date(),
+          isStreaming: true,
+        };
+        
+        setMessages(prev => [...prev, aiResponse]);
+        
+        // After streaming completes, mark as not streaming
+        setTimeout(() => {
+          setMessages(prev => prev.map(msg => 
+            msg.id === aiResponseId ? { ...msg, isStreaming: false } : msg
+          ));
+        }, (response.length / 60) * 1000); // Based on streaming speed
+      }, 300); // Small delay for realism
+      
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      setError(error.message || 'Failed to send message. Please try again.');
+      setIsTyping(false);
+      
+      // Add error message as system response
+      const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
-        text: randomResponse,
+        text: 'I\'m having trouble connecting right now. Please check your connection and try again.',
         isUser: false,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, aiResponse]);
-    }, 1000);
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -230,11 +270,16 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         onKeyPress={handleKeyPress}
-        placeholder="Type your message..."
+        placeholder={isLoading ? "Waiting for response..." : "Type your message..."}
         className="flex-1"
+        disabled={isLoading}
       />
-      <Button onClick={handleSendMessage} size="icon">
-        <Send className="w-4 h-4" />
+      <Button onClick={handleSendMessage} size="icon" disabled={isLoading}>
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Send className="w-4 h-4" />
+        )}
       </Button>
     </div>
   );
@@ -269,13 +314,22 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  <p>{message.text}</p>
+                  {message.isStreaming ? (
+                    <StreamingText text={message.text} speed={60} />
+                  ) : (
+                    <p>{message.text}</p>
+                  )}
                   <p className="text-xs mt-1 opacity-70">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <TypingIndicator />
+              </div>
+            )}
           </div>
         </div>
 
@@ -318,13 +372,22 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  <p>{message.text}</p>
+                  {message.isStreaming ? (
+                    <StreamingText text={message.text} speed={60} />
+                  ) : (
+                    <p>{message.text}</p>
+                  )}
                   <p className="text-xs mt-1 opacity-70">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
             ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <TypingIndicator />
+              </div>
+            )}
           </div>
         </div>
 

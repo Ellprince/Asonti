@@ -11,7 +11,7 @@ import { Progress } from './ui/progress';
 import { X, AlertTriangle, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
 import { storage } from './hooks/useLocalStorage';
 import { futureSelfService } from '@/services/futureSelfService';
-import type { FutureSelfProfile } from '@/lib/supabase';
+import { supabase, type FutureSelfProfile } from '@/lib/supabase';
 
 export interface WizardData {
   photo?: string;
@@ -165,13 +165,37 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
   };
 
   const handleCompletion = async () => {
+    console.log('Completing wizard with profileId:', profileId);
+    
     if (profileId) {
       try {
         await futureSelfService.completeWizard(profileId);
+        console.log('Profile marked as complete in database');
+        
+        // Clear the profileGuard cache to ensure the completion is recognized
+        const { profileGuard } = await import('@/services/profileGuard');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          profileGuard.invalidateCache(user.id);
+          // Force a recheck to update the UI
+          const status = await profileGuard.checkProfileCompletion(user.id);
+          console.log('Profile completion status after saving:', status);
+          
+          // Also manually trigger the profileGuard to mark complete
+          if (!status.isComplete) {
+            console.log('Profile still not complete, manually marking...');
+            await profileGuard.markProfileComplete(user.id);
+          }
+        }
       } catch (error) {
         console.error('Error completing wizard:', error);
+        alert('There was an error saving your profile. Please try again.');
+        return; // Don't proceed if there's an error
       }
+    } else {
+      console.warn('No profile ID available to complete wizard');
     }
+    
     const completedData = { ...wizardData, completed: true };
     updateWizardData({ completed: true });
     onComplete(completedData);

@@ -49,14 +49,16 @@ export class ProfileGuardService {
     }
 
     // Query database for active profile
-    const { data: profile, error } = await supabase
+    const { data: profiles, error } = await supabase
       .from('future_self_profiles')
       .select('*')
       .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
+      .eq('is_active', true);
+
+    const profile = profiles && profiles.length > 0 ? profiles[0] : null;
 
     if (error || !profile) {
+      console.error('Profile guard - no active profile found:', error);
       const status = {
         hasProfile: false,
         isComplete: false,
@@ -70,25 +72,30 @@ export class ProfileGuardService {
     // Check completion requirements
     const missingFields: string[] = [];
     
-    // Check required fields
-    if (!profile.attributes || Object.keys(profile.attributes).length < 24) {
-      missingFields.push('attributes');
+    // First check if profile is marked as completed
+    const isMarkedComplete = !!profile.completed_at;
+    
+    // If not marked complete, check required fields
+    if (!isMarkedComplete) {
+      if (!profile.attributes || Object.keys(profile.attributes).length < 24) {
+        missingFields.push('attributes');
+      }
+      if (!profile.hope) missingFields.push('hope');
+      if (!profile.fear) missingFields.push('fear');
+      if (!profile.current_values || profile.current_values.length === 0) {
+        missingFields.push('current_values');
+      }
+      if (!profile.future_values || profile.future_values.length === 0) {
+        missingFields.push('future_values');
+      }
+      if (!profile.feelings) missingFields.push('feelings');
+      if (!profile.day_in_life) missingFields.push('day_in_life');
+      // Photo is optional per requirements
     }
-    if (!profile.hope) missingFields.push('hope');
-    if (!profile.fear) missingFields.push('fear');
-    if (!profile.current_values || profile.current_values.length === 0) {
-      missingFields.push('current_values');
-    }
-    if (!profile.future_values || profile.future_values.length === 0) {
-      missingFields.push('future_values');
-    }
-    if (!profile.feelings) missingFields.push('feelings');
-    if (!profile.day_in_life) missingFields.push('day_in_life');
-    // Photo is optional per requirements
     
     const status = {
       hasProfile: true,
-      isComplete: missingFields.length === 0,
+      isComplete: isMarkedComplete || missingFields.length === 0,
       missingFields,
       profile
     };
