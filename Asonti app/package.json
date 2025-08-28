@@ -1,7 +1,8 @@
 {
-      "name": "Mobile App with Bottom Navigation",
+      "name": "mobile-app-with-bottom-navigation",
       "version": "0.1.0",
       "private": true,
+      "type": "module",
       "dependencies": {
             "@ai-sdk/openai": "^2.0.22",
             "@radix-ui/react-accordion": "^1.2.3",
@@ -35,7 +36,11 @@
             "class-variance-authority": "^0.7.1",
             "clsx": "*",
             "cmdk": "^1.1.1",
+            "concurrently": "^9.2.1",
+            "cors": "^2.8.5",
+            "dotenv": "^17.2.1",
             "embla-carousel-react": "^8.6.0",
+            "express": "^5.1.0",
             "input-otp": "^1.4.2",
             "lucide-react": "^0.487.0",
             "motion": "*",
@@ -67,7 +72,9 @@
             "vitest": "^3.2.4"
       },
       "scripts": {
-            "dev": "vite",
+            "dev": "vite --port 3001",
+            "server": "node server.js",
+            "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
             "build": "vite build",
             "test": "vitest",
             "test:coverage": "vitest run --coverage",
