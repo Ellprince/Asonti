@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>localStorage Test</title>
+</head>
+<body>
+    <h1>Plan 08 localStorage Test</h1>
+    <button onclick="testLocalStorage()">Run Test</button>
+    <pre id="results"></pre>
+    
+    <script>
+        function testLocalStorage() {
+            const results = document.getElementById('results');
+            let output = "=== localStorage Audit ===\n\n";
+            
+            // Check all localStorage keys
+            const keys = Object.keys(localStorage);
+            let appDataFound = false;
+            
+            keys.forEach(key => {
+                output += `Found: ${key}\n`;
+                
+                // Check if it's app data (not auth)
+                if (!key.includes('supabase') && !key.includes('auth')) {
+                    output += `  ⚠️ WARNING: App data in localStorage!\n`;
+                    output += `  Value: ${localStorage.getItem(key)?.substring(0, 100)}...\n`;
+                    appDataFound = true;
+                }
+            });
+            
+            if (!appDataFound) {
+                output += "\n✅ SUCCESS: No app data in localStorage!\n";
+                output += "Only auth tokens found (expected).\n";
+            } else {
+                output += "\n❌ FAILURE: App data still using localStorage!\n";
+            }
+            
+            results.textContent = output;
+        }
+        
+        // Auto-run on load
+        window.onload = () => {
+            setTimeout(testLocalStorage, 1000);
+        };
+    </script>
+</body>
+</html>
