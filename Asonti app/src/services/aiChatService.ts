@@ -1,6 +1,7 @@
 import { openai } from '@ai-sdk/openai';
 import { streamText } from 'ai';
 import { PersonalityService } from './personalityService';
+import { profileHistory } from './profileHistoryService';
 import { supabase } from '@/lib/supabase';
 import type { PersonalityAnalysis, Message } from '@/types/personality';
 
@@ -19,7 +20,20 @@ export class AIChatService {
   ): Promise<ReadableStream> {
     const personality = await this.personalityService.getPersonality(userId);
     
-    const systemPrompt = this.buildSystemPrompt(personality, futureSelfProfile);
+    // Check if we should include history context
+    let historyContext = '';
+    const changeKeywords = ['changed', 'different', 'progress', 'evolved', 'growth', 
+                           'before', 'used to', 'originally', 'past', 'journey', 
+                           'transformation', 'shift', 'update'];
+    const shouldIncludeHistory = changeKeywords.some(keyword => 
+      message.toLowerCase().includes(keyword)
+    );
+    
+    if (shouldIncludeHistory && futureSelfProfile?.id) {
+      historyContext = await profileHistory.getHistorySummary(futureSelfProfile.id);
+    }
+    
+    const systemPrompt = this.buildSystemPrompt(personality, futureSelfProfile, historyContext);
     
     const result = await streamText({
       model: openai('gpt-4o'),
@@ -37,10 +51,11 @@ export class AIChatService {
   
   private buildSystemPrompt(
     personality: PersonalityAnalysis | null, 
-    profile?: any
+    profile?: any,
+    historyContext?: string
   ): string {
     if (!personality) {
-      return this.getDefaultSystemPrompt(profile);
+      return this.getDefaultSystemPrompt(profile, historyContext);
     }
     
     const { bigFive, communicationStyle, responseGuidelines } = personality;
@@ -87,8 +102,12 @@ ABOUT YOUR PAST SELF:
 - To embrace: ${profile.future_values?.join(', ') || 'wisdom and fulfillment'}
     ` : '';
     
+    const historySection = historyContext ? `
+${historyContext}
+    ` : '';
+    
     return `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.
-${profileContext}
+${profileContext}${historySection}
 
 PERSONALITY-BASED BEHAVIOR (NEVER MENTION THESE EXPLICITLY):
 ${behaviorGuides.join('\n')}
@@ -114,7 +133,7 @@ IMPORTANT RULES:
 7. Share insights from "your" (their future) experiences`;
   }
   
-  private getDefaultSystemPrompt(profile?: any): string {
+  private getDefaultSystemPrompt(profile?: any, historyContext?: string): string {
     const profileContext = profile ? `
 ABOUT YOUR PAST SELF:
 - Name: ${profile.name || 'Friend'}
@@ -123,8 +142,12 @@ ABOUT YOUR PAST SELF:
 - How they want to feel: ${profile.feelings || 'Fulfilled and at peace'}
     ` : '';
     
+    const historySection = historyContext ? `
+${historyContext}
+    ` : '';
+    
     return `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.
-${profileContext}
+${profileContext}${historySection}
 
 You are wise, compassionate, and understanding. You remember the journey vividly and can offer guidance based on the experiences you've had. Speak with warmth and authenticity, as someone who truly understands because you've been there.
 

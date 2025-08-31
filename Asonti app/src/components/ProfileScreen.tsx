@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 import { FutureSelfWizard, type WizardData } from './FutureSelfWizard';
 import { ScrollArea } from './ui/scroll-area';
 import { futureSelfService } from '@/services/futureSelfService';
+import { profileHistory } from '@/services/profileHistoryService';
 import { supabase } from '@/lib/supabase';
 import type { FutureSelfProfile } from '@/lib/supabase';
 import { OnboardingMessage } from './OnboardingMessage';
@@ -76,6 +77,11 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
   const [isStrengthsExpanded, setIsStrengthsExpanded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [showOnboardingMsg, setShowOnboardingMsg] = useState(showOnboarding);
+  const [versionInfo, setVersionInfo] = useState<{
+    version: number;
+    lastUpdated: string;
+    historyCount: number;
+  }>({ version: 1, lastUpdated: '', historyCount: 0 });
 
   // Update onboarding message visibility when prop changes
   useEffect(() => {
@@ -127,6 +133,24 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
 
     loadData();
   }, [retryCount]);
+
+  // Fetch version info when profile loads
+  useEffect(() => {
+    const fetchVersionInfo = async () => {
+      if (profile?.id) {
+        const count = await profileHistory.getHistoryCount(profile.id);
+        setVersionInfo({
+          version: profile.version_number || 1,
+          lastUpdated: profile.updated_at 
+            ? new Date(profile.updated_at).toLocaleDateString()
+            : 'Never',
+          historyCount: count
+        });
+      }
+    };
+    
+    fetchVersionInfo();
+  }, [profile]);
 
   // Reload profile data from database
   const reloadProfile = () => {
@@ -547,6 +571,15 @@ Created with Asonti - Your thinking partner`;
             )}
 
           </div>
+
+          {/* Version info at bottom */}
+          {profile && (
+            <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="text-center text-xs text-gray-500 dark:text-gray-400 px-4">
+                Version {versionInfo.version} • Last updated {versionInfo.lastUpdated}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}

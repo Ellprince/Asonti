@@ -2,10 +2,12 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { ScrollArea } from './ui/scroll-area';
-import { Bell, Moon, HelpCircle, RotateCcw, Trash2, LogOut, Settings, Loader2 } from 'lucide-react';
+import { Bell, Moon, HelpCircle, RotateCcw, Trash2, LogOut, Settings, Loader2, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { userSettingsService, type UserSettings } from '@/services/userSettingsService';
+import { profileHistory } from '@/services/profileHistoryService';
+import { supabase } from '@/lib/supabase';
 import { useToast } from './ui/use-toast';
 
 interface SettingsData {
@@ -201,6 +203,39 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
     }
   };
 
+  const handleDeleteHistory = async () => {
+    const confirmed = window.confirm(
+      'This will permanently delete all your profile history. Your current profile will remain unchanged. Continue?'
+    );
+    
+    if (confirmed) {
+      setIsSaving(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const success = await profileHistory.deleteUserHistory(session.user.id);
+          if (success) {
+            toast({
+              title: "Profile history deleted",
+              description: "All profile change history has been deleted successfully",
+            });
+          } else {
+            throw new Error('Failed to delete history');
+          }
+        }
+      } catch (error) {
+        console.error('Error deleting history:', error);
+        toast({
+          title: "Error deleting history",
+          description: "Failed to delete history. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -328,6 +363,20 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
                     <Trash2 className="w-3 h-3 mr-2" />
                   )}
                   Clear Future Self Data
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleDeleteHistory}
+                  className="w-full justify-start"
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                  ) : (
+                    <History className="w-3 h-3 mr-2" />
+                  )}
+                  Delete Profile History
                 </Button>
                 <Button 
                   variant="destructive" 
