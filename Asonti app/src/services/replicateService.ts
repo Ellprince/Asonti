@@ -1,4 +1,4 @@
-import Replicate from 'replicate';
+import { supabase } from '../lib/supabase';
 
 interface AgeTransformationOptions {
   targetAge?: number; // Default: +2 years  
@@ -15,22 +15,15 @@ interface Prediction {
 }
 
 export class ReplicateService {
-  private client: Replicate;
   private readonly MAX_POLL_TIME = 30000; // 30 seconds
   private readonly POLL_INTERVAL = 2000; // 2 seconds
-  private readonly SAM_MODEL_VERSION = 'd7129e88816823363aa5b41ed9aab6b9cb2996ce742c4169379cca5c40812b1f';
   
   constructor() {
-    const token = import.meta.env.VITE_REPLICATE_API_TOKEN;
-    if (!token) {
-      throw new Error('Replicate API token required');
-    }
-    
-    this.client = new Replicate({ auth: token });
+    // No client-side token needed anymore - all calls go through the server
   }
   
   /**
-   * Start aging photo asynchronously
+   * Start aging photo asynchronously via server endpoint
    * Returns prediction ID for tracking
    */
   async agePhotoAsync(
@@ -38,8 +31,29 @@ export class ReplicateService {
     options?: AgeTransformationOptions
   ): Promise<string> {
     try {
-      const prediction = await this.createPrediction(imageUrl, options);
-      return prediction.id;
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch('/api/age-photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'start',
+          imageUrl,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start aging: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.predictionId;
     } catch (error: any) {
       console.error('Failed to start photo aging:', error);
       throw error;
@@ -47,7 +61,7 @@ export class ReplicateService {
   }
   
   /**
-   * Poll for prediction completion
+   * Poll for prediction completion via server endpoint
    * Returns aged photo URL or null if failed
    */
   async pollPrediction(
@@ -58,24 +72,41 @@ export class ReplicateService {
     let retryCount = 0;
     const maxRetries = options?.retryOnError ? 3 : 1;
     
+    const session = await supabase.auth.getSession();
+    if (!session.data.session) {
+      throw new Error('Authentication required');
+    }
+    
     while (Date.now() - startTime < this.MAX_POLL_TIME) {
       try {
-        const prediction = await this.client.predictions.get(predictionId);
+        const response = await fetch('/api/age-photo', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'poll',
+            predictionId,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to poll prediction: ${response.statusText}`);
+        }
+
+        const data = await response.json();
         
-        if (prediction.status === 'succeeded') {
-          // Handle both string and array outputs
-          const output = Array.isArray(prediction.output) 
-            ? prediction.output[0] 
-            : prediction.output;
-          return output || null;
+        if (data.status === 'succeeded') {
+          return data.agedUrl || null;
         }
         
-        if (prediction.status === 'failed') {
-          console.error(`Aging failed: ${prediction.error}`);
+        if (data.status === 'failed') {
+          console.error(`Aging failed: ${data.error}`);
           return null; // Graceful fallback
         }
         
-        if (prediction.status === 'canceled') {
+        if (data.status === 'canceled') {
           console.log('Aging was canceled');
           return null;
         }
@@ -102,29 +133,6 @@ export class ReplicateService {
   }
   
   /**
-   * Create prediction with SAM model
-   */
-  private async createPrediction(
-    imageUrl: string,
-    options?: AgeTransformationOptions
-  ): Promise<Prediction> {
-    // Note: SAM model expects specific input format
-    // For subtle 2-year aging, we may need to adjust parameters
-    const input = {
-      image: imageUrl,
-      target_age: options?.targetAge || '2_years_older',
-      // Additional parameters may be needed based on model documentation
-    };
-    
-    const prediction = await this.client.predictions.create({
-      version: this.SAM_MODEL_VERSION,
-      input,
-    });
-    
-    return prediction as Prediction;
-  }
-  
-  /**
    * Helper function to sleep
    */
   private sleep(ms: number): Promise<void> {
@@ -132,23 +140,63 @@ export class ReplicateService {
   }
   
   /**
-   * Cancel a running prediction
+   * Cancel a running prediction via server endpoint
    */
   async cancelPrediction(predictionId: string): Promise<void> {
     try {
-      await this.client.predictions.cancel(predictionId);
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch('/api/age-photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'cancel',
+          predictionId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to cancel prediction: ${response.statusText}`);
+      }
     } catch (error) {
       console.error('Failed to cancel prediction:', error);
     }
   }
   
   /**
-   * Get prediction status without polling
+   * Get prediction status without polling via server endpoint
    */
   async getPredictionStatus(predictionId: string): Promise<string> {
     try {
-      const prediction = await this.client.predictions.get(predictionId);
-      return prediction.status;
+      const session = await supabase.auth.getSession();
+      if (!session.data.session) {
+        return 'unknown';
+      }
+
+      const response = await fetch('/api/age-photo', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'poll',
+          predictionId,
+        }),
+      });
+
+      if (!response.ok) {
+        return 'unknown';
+      }
+
+      const data = await response.json();
+      return data.status || 'unknown';
     } catch (error) {
       console.error('Failed to get prediction status:', error);
       return 'unknown';
@@ -156,26 +204,15 @@ export class ReplicateService {
   }
 }
 
-// Export singleton instance only if token exists
+// Export singleton instance - no token required as we use server endpoint
 let replicateServiceInstance: ReplicateService | null = null;
 
 export const getReplicateService = () => {
   if (!replicateServiceInstance) {
-    try {
-      replicateServiceInstance = new ReplicateService();
-    } catch (error) {
-      console.warn('Replicate service not available:', error);
-      return null;
-    }
+    replicateServiceInstance = new ReplicateService();
   }
   return replicateServiceInstance;
 };
 
-// For backwards compatibility and testing
-export const replicateService = (() => {
-  try {
-    return import.meta.env.VITE_REPLICATE_API_TOKEN ? new ReplicateService() : null;
-  } catch {
-    return null;
-  }
-})();
+// For backwards compatibility
+export const replicateService = new ReplicateService();

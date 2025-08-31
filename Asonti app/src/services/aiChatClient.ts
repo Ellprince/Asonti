@@ -39,17 +39,25 @@ class AIChatClient {
       // Get future self profile from Supabase
       const futureSelfData = await futureSelfService.getActiveProfile();
       
-      // Try to use the local AI server if available
+      // Prefer the Vercel Edge route; allow optional local dev fallback
+      const apiHistory = this.conversationHistory.map(msg => ({
+        role: msg.isUser ? 'user' : 'assistant',
+        content: msg.text
+      }));
+
+      const useLocal = import.meta.env.VITE_USE_LOCAL_AI === '1';
+
+      const endpoint = useLocal
+        ? 'http://localhost:3002/api/chat'
+        : '/api/chat';
+
       try {
-        const apiHistory = this.conversationHistory.map(msg => ({
-          role: msg.isUser ? 'user' : 'assistant',
-          content: msg.text
-        }));
-        
-        const response = await fetch('http://localhost:3002/api/chat', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            // Always send auth; local server ignores it, Edge requires it
+            'Authorization': `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             message,
@@ -57,10 +65,32 @@ class AIChatClient {
             futureSelfProfile: futureSelfData
           })
         });
-        
+
+        // If the Edge route streams SSE, try to parse as text first; otherwise expect JSON
+        const contentType = response.headers.get('content-type') || '';
+
         if (response.ok) {
-          const data = await response.json();
-          
+          // Minimal handling: if JSON, parse; if stream/text, accumulate to string
+          let aiText = '';
+          if (contentType.includes('application/json')) {
+            const data = await response.json();
+            aiText = data.response || '';
+          } else {
+            // Read the stream and combine chunks (simple approach)
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                aiText += decoder.decode(value, { stream: true });
+              }
+              aiText += decoder.decode();
+            }
+            // Try to extract final message if server formatted; else use raw
+            aiText = aiText.trim() || "I'm here.";
+          }
+
           // Add messages to history
           this.conversationHistory.push({
             id: Date.now().toString(),
@@ -68,21 +98,21 @@ class AIChatClient {
             isUser: true,
             timestamp: new Date()
           });
-          
+
           this.conversationHistory.push({
             id: (Date.now() + 1).toString(),
-            text: data.response,
+            text: aiText,
             isUser: false,
             timestamp: new Date()
           });
-          
-          return { response: data.response };
+
+          return { response: aiText };
         }
       } catch (serverError) {
-        console.log('Local AI server not available, using fallback responses');
+        console.log('Edge/local AI server not available, using fallback responses');
       }
       
-      // Fallback to simulated responses if server isn't running
+      // Fallback to simulated responses if server isn't reachable
       const response = this.generateLocalResponse(message, futureSelfData);
       
       // Add messages to history

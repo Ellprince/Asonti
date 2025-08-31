@@ -1,4 +1,7 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "framework": "vite",
   "functions": {
     "api/*.ts": {
       "runtime": "@vercel/edge",
@@ -9,6 +12,10 @@
     {
       "source": "/api/:path*",
       "destination": "/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
