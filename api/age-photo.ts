@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 import Replicate from 'replicate';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
   regions: ['iad1'],
 };
 
@@ -12,16 +13,16 @@ interface RequestBody {
   predictionId?: string;
 }
 
-export default async function handler(request: Request) {
-  if (request.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
     // Verify authentication
-    const authHeader = request.headers.get('authorization');
+    const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response('Unauthorized', { status: 401 });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     const token = authHeader.substring(7);
@@ -31,10 +32,7 @@ export default async function handler(request: Request) {
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
-        { status: 500, headers: { 'content-type': 'application/json' } }
-      );
+      return res.status(500).json({ error: 'Server configuration error' });
     }
 
     const serverSupabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
@@ -44,18 +42,15 @@ export default async function handler(request: Request) {
     // Verify user
     const { data: { user }, error: authError } = await serverSupabase.auth.getUser(token);
     if (authError || !user) {
-      return new Response('Unauthorized', { status: 401 });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { action, imageUrl, predictionId } = await request.json() as RequestBody;
+    const { action, imageUrl, predictionId } = req.body as RequestBody;
 
     // Get Replicate token from server environment
     const replicateToken = process.env.REPLICATE_API_TOKEN;
     if (!replicateToken) {
-      return new Response(
-        JSON.stringify({ error: 'Replicate service not configured' }),
-        { status: 503, headers: { 'content-type': 'application/json' } }
-      );
+      return res.status(503).json({ error: 'Replicate service not configured' });
     }
 
     const replicate = new Replicate({ auth: replicateToken });
@@ -66,10 +61,7 @@ export default async function handler(request: Request) {
     switch (action) {
       case 'start': {
         if (!imageUrl) {
-          return new Response(
-            JSON.stringify({ error: 'Image URL required' }),
-            { status: 400, headers: { 'content-type': 'application/json' } }
-          );
+          return res.status(400).json({ error: 'Image URL required' });
         }
 
         // Start aging process
@@ -81,21 +73,15 @@ export default async function handler(request: Request) {
           },
         });
 
-        return new Response(
-          JSON.stringify({ 
-            predictionId: prediction.id,
-            status: prediction.status 
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        );
+        return res.status(200).json({ 
+          predictionId: prediction.id,
+          status: prediction.status 
+        });
       }
 
       case 'poll': {
         if (!predictionId) {
-          return new Response(
-            JSON.stringify({ error: 'Prediction ID required' }),
-            { status: 400, headers: { 'content-type': 'application/json' } }
-          );
+          return res.status(400).json({ error: 'Prediction ID required' });
         }
 
         // Check prediction status
@@ -106,65 +92,44 @@ export default async function handler(request: Request) {
             ? prediction.output[0] 
             : prediction.output;
 
-          return new Response(
-            JSON.stringify({ 
-              status: 'succeeded',
-              agedUrl: output || null 
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } }
-          );
+          return res.status(200).json({ 
+            status: 'succeeded',
+            agedUrl: output || null 
+          });
         }
 
         if (prediction.status === 'failed') {
-          return new Response(
-            JSON.stringify({ 
-              status: 'failed',
-              error: prediction.error 
-            }),
-            { status: 200, headers: { 'content-type': 'application/json' } }
-          );
+          return res.status(200).json({ 
+            status: 'failed',
+            error: prediction.error 
+          });
         }
 
         // Still processing
-        return new Response(
-          JSON.stringify({ 
-            status: prediction.status 
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        );
+        return res.status(200).json({ 
+          status: prediction.status 
+        });
       }
 
       case 'cancel': {
         if (!predictionId) {
-          return new Response(
-            JSON.stringify({ error: 'Prediction ID required' }),
-            { status: 400, headers: { 'content-type': 'application/json' } }
-          );
+          return res.status(400).json({ error: 'Prediction ID required' });
         }
 
         await replicate.predictions.cancel(predictionId);
 
-        return new Response(
-          JSON.stringify({ status: 'canceled' }),
-          { status: 200, headers: { 'content-type': 'application/json' } }
-        );
+        return res.status(200).json({ status: 'canceled' });
       }
 
       default: {
-        return new Response(
-          JSON.stringify({ error: 'Invalid action' }),
-          { status: 400, headers: { 'content-type': 'application/json' } }
-        );
+        return res.status(400).json({ error: 'Invalid action' });
       }
     }
   } catch (error) {
     console.error('Age photo error:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Failed to process aging request',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }),
-      { status: 500, headers: { 'content-type': 'application/json' } }
-    );
+    return res.status(500).json({ 
+      error: 'Failed to process aging request',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }

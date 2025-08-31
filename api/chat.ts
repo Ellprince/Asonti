@@ -1,23 +1,24 @@
 import { createClient } from '@supabase/supabase-js';
 import { openai } from '@ai-sdk/openai';
 import { streamText } from 'ai';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 type Message = { role: 'system' | 'user' | 'assistant'; content: string };
 
 export const config = {
-  runtime: 'edge',
+  runtime: 'nodejs',
   regions: ['iad1'],
 };
 
-export default async function handler(request: Request) {
-  if (request.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
   
   try {
-    const authHeader = request.headers.get('authorization');
+    const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return new Response('Unauthorized', { status: 401 });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     const token = authHeader.substring(7);
@@ -27,10 +28,7 @@ export default async function handler(request: Request) {
     const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
-      return new Response(
-        JSON.stringify({ error: 'Server configuration error: missing Supabase env vars' }),
-        { status: 500, headers: { 'content-type': 'application/json' } }
-      );
+      return res.status(500).json({ error: 'Server configuration error: missing Supabase env vars' });
     }
 
     const serverSupabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
@@ -41,13 +39,13 @@ export default async function handler(request: Request) {
     const { data: { user }, error: authError } = await serverSupabase.auth.getUser(token);
 
     if (authError || !user) {
-      return new Response('Unauthorized', { status: 401 });
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { message, conversationHistory, futureSelfProfile } = await request.json();
+    const { message, conversationHistory, futureSelfProfile } = req.body;
 
     if (!message) {
-      return new Response('Message is required', { status: 400 });
+      return res.status(400).json({ error: 'Message is required' });
     }
 
     // Build a system prompt based on provided profile (avoid server DB reads for Edge safety)
@@ -85,25 +83,14 @@ Speak with warmth and authenticity as someone who truly understands because you'
       maxTokens: 1000,
     });
 
-    const stream = result.toDataStreamResponse();
-
-    return new Response(stream.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    });
+    // For Node.js runtime, we'll return the full text response
+    const text = await result.text;
+    return res.status(200).json({ response: text });
   } catch (error) {
     console.error('Chat error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Chat failed', details: error instanceof Error ? error.message : 'Unknown error' }), 
-      { 
-        status: 500,
-        headers: {
-          'content-type': 'application/json',
-        },
-      }
-    );
+    return res.status(500).json({ 
+      error: 'Chat processing failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 }
