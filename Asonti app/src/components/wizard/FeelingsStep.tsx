@@ -10,7 +10,7 @@ interface FeelingsStepProps {
 }
 
 export function FeelingsStep({ feelings = '', onDataChange }: FeelingsStepProps) {
-  const [localFeelings, setLocalFeelings] = useState(feelings);
+  const [localFeelings, setLocalFeelings] = useState(feelings || '');
 
   const handleFeelingsChange = (value: string) => {
     setLocalFeelings(value);
@@ -76,7 +76,7 @@ export function FeelingsStep({ feelings = '', onDataChange }: FeelingsStepProps)
           className="flex-1 min-h-32 resize-none"
         />
         <div className="text-xs text-muted-foreground mt-2">
-          {localFeelings.length} characters (minimum 20 required)
+          {localFeelings ? localFeelings.length : 0} characters (minimum 20 required)
         </div>
       </div>
     </div>

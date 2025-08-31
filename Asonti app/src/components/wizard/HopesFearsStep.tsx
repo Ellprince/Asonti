@@ -11,13 +11,13 @@ interface HopesFearsStepProps {
 }
 
 export function HopesFearsStep({ hope = '', fear = '', onDataChange }: HopesFearsStepProps) {
-  const [localHope, setLocalHope] = useState(hope);
-  const [localFear, setLocalFear] = useState(fear);
+  const [localHope, setLocalHope] = useState(hope || '');
+  const [localFear, setLocalFear] = useState(fear || '');
 
   // Sync with props when they change
   useEffect(() => {
-    setLocalHope(hope);
-    setLocalFear(fear);
+    setLocalHope(hope || '');
+    setLocalFear(fear || '');
   }, [hope, fear]);
 
   const handleHopeChange = (value: string) => {
@@ -31,8 +31,8 @@ export function HopesFearsStep({ hope = '', fear = '', onDataChange }: HopesFear
   };
 
   // More reasonable validation - require at least some meaningful content
-  const hopeValid = localHope.trim().length >= 5;
-  const fearValid = localFear.trim().length >= 5;
+  const hopeValid = localHope && localHope.trim().length >= 5;
+  const fearValid = localFear && localFear.trim().length >= 5;
 
   const hopeExample = "As a senior marketing director, I hope to lead innovative campaigns that drive sustainable change, working with diverse teams in a collaborative environment where creativity and impact go hand in hand.";
   
@@ -60,7 +60,7 @@ export function HopesFearsStep({ hope = '', fear = '', onDataChange }: HopesFear
           />
           <div className="text-xs flex justify-between items-center">
             <span className="text-muted-foreground">
-              {localHope.trim().length}/5 characters minimum
+              {localHope ? localHope.trim().length : 0}/5 characters minimum
             </span>
             {hopeValid && <span className="text-green-600 font-medium">✓ Ready</span>}
           </div>
@@ -82,7 +82,7 @@ export function HopesFearsStep({ hope = '', fear = '', onDataChange }: HopesFear
           />
           <div className="text-xs flex justify-between items-center">
             <span className="text-muted-foreground">
-              {localFear.trim().length}/5 characters minimum
+              {localFear ? localFear.trim().length : 0}/5 characters minimum
             </span>
             {fearValid && <span className="text-green-600 font-medium">✓ Ready</span>}
           </div>

@@ -11,7 +11,7 @@ interface DayInLifeStepProps {
 }
 
 export function DayInLifeStep({ dayInLife = '', onDataChange }: DayInLifeStepProps) {
-  const [localDayInLife, setLocalDayInLife] = useState(dayInLife);
+  const [localDayInLife, setLocalDayInLife] = useState(dayInLife || '');
 
   const handleDayInLifeChange = (value: string) => {
     setLocalDayInLife(value);
@@ -83,7 +83,7 @@ export function DayInLifeStep({ dayInLife = '', onDataChange }: DayInLifeStepPro
               rows={12}
             />
             <div className="text-xs text-muted-foreground mt-2 font-normal leading-relaxed">
-              {localDayInLife.length} characters (minimum 50 required)
+              {localDayInLife ? localDayInLife.length : 0} characters (minimum 50 required)
             </div>
           </div>
 
