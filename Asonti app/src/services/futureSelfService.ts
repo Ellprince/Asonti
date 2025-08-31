@@ -235,19 +235,38 @@ export class FutureSelfService {
     
     // Try to save with retry
     await this.retryWithBackoff(async () => {
-      const { error } = await supabase
+      // First, check if user already has an active profile
+      const { data: existingProfile } = await supabase
         .from('future_self_profiles')
-        .upsert({
-          user_id: session.user.id,
-          ...data,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        })
+        .select('id')
         .eq('user_id', session.user.id)
-        .select();
-      
-      if (error) {
-        throw error;
+        .eq('is_active', true)
+        .single();
+
+      if (existingProfile) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('future_self_profiles')
+          .update({
+            ...data,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingProfile.id);
+        
+        if (error) throw error;
+      } else {
+        // Create new profile
+        const { error } = await supabase
+          .from('future_self_profiles')
+          .insert({
+            user_id: session.user.id,
+            ...data,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        
+        if (error) throw error;
       }
     });
   }
