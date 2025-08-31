@@ -15,6 +15,7 @@ import { supabase, type FutureSelfProfile } from '@/lib/supabase';
 
 export interface WizardData {
   photo?: string;
+  agedPhotoUrl?: string;
   attributes: Record<string, 'have_now' | 'want_to_develop' | 'not_me'>;
   hope?: string;
   fear?: string;
@@ -74,16 +75,16 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
         }
       } catch (error) {
         console.error('Error loading profile:', error);
-        // Fall back to localStorage if database fails
-        const savedWizard = storage.getItem('future-self-wizard');
-        if (savedWizard) {
-          setWizardData(prev => ({
-            ...prev,
-            ...savedWizard,
-            currentValues: Array.isArray(savedWizard.currentValues) ? savedWizard.currentValues : [],
-            futureValues: Array.isArray(savedWizard.futureValues) ? savedWizard.futureValues : [],
-          }));
-        }
+        // No localStorage fallback - start fresh
+        setWizardData(prev => ({
+          ...prev,
+          attributes: {},
+          currentValues: [],
+          futureValues: [],
+          currentStep: 1,
+          completed: false,
+          agedPhotoUrl: undefined,
+        }));
       } finally {
         setIsLoading(false);
       }
@@ -111,13 +112,10 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
         });
       } catch (error) {
         console.error('Error saving to database:', error);
-        setSaveError('Failed to save progress. Your changes are saved locally.');
-        // Fallback to localStorage
-        const success = storage.setItem('future-self-wizard', wizardData);
-        if (!success) {
-          setStorageWarning(true);
-          setTimeout(() => setStorageWarning(false), 10000);
-        }
+        setSaveError('Failed to save progress. Please check your connection.');
+        // No localStorage fallback - show error to user
+        setStorageWarning(true);
+        setTimeout(() => setStorageWarning(false), 10000);
       } finally {
         setIsSaving(false);
       }
@@ -210,8 +208,7 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
     if (clearedSpace > 0) {
       setStorageWarning(false);
       setStorageError(false);
-      // Try to save again
-      storage.setItem('future-self-wizard', wizardData);
+      // No localStorage fallback - data stays in component state
     }
   };
 
@@ -247,7 +244,7 @@ export function FutureSelfWizard({ onComplete, onCancel }: FutureSelfWizardProps
         return (
           <PhotoUploadStep
             currentPhoto={wizardData.photo}
-            onPhotoChange={(photo) => updateWizardData({ photo })}
+            onPhotoChange={(photo, agedPhotoUrl) => updateWizardData({ photo, agedPhotoUrl })}
           />
         );
       }

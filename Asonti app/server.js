@@ -46,7 +46,7 @@ You are wise, compassionate, and understanding. Speak with warmth and authentici
     ];
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',  // Upgraded to GPT-5 - cheaper and better!
       messages,
       temperature: 0.7,
       max_tokens: 1000,

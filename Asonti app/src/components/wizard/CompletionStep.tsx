@@ -39,10 +39,9 @@ export function CompletionStep({ wizardData, onComplete }: CompletionStepProps) 
   // Check for aged photo on mount
   useEffect(() => {
     const checkForAgedPhoto = async () => {
-      // First check localStorage for recently aged photo
-      const localAged = localStorage.getItem('aged-photo-url');
-      if (localAged) {
-        setAgedPhotoUrl(localAged);
+      // Check if aged photo is in wizard data
+      if (wizardData?.agedPhotoUrl) {
+        setAgedPhotoUrl(wizardData.agedPhotoUrl);
         return;
       }
       
@@ -62,7 +61,7 @@ export function CompletionStep({ wizardData, onComplete }: CompletionStepProps) 
       setRevealAged(true);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [user]);
+  }, [user, wizardData?.agedPhotoUrl]);
   
   // Ensure we have valid data structures
   // Always prefer aged photo if available

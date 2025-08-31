@@ -6,8 +6,8 @@ import { Sparkles, Share2, ChevronDown, ChevronUp, Loader2, AlertCircle, Refresh
 import { useState, useEffect } from 'react';
 import { FutureSelfWizard, type WizardData } from './FutureSelfWizard';
 import { ScrollArea } from './ui/scroll-area';
-import { storage } from './hooks/useLocalStorage';
 import { futureSelfService } from '@/services/futureSelfService';
+import { supabase } from '@/lib/supabase';
 import type { FutureSelfProfile } from '@/lib/supabase';
 import { OnboardingMessage } from './OnboardingMessage';
 
@@ -88,6 +88,15 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
       setIsLoading(true);
       setError(null);
       try {
+        // Check if user is authenticated first
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.log('No active session, user needs to log in');
+          setFutureSelf({ hasProfile: false });
+          setError('Please sign in to view your profile');
+          return;
+        }
+
         const profileData = await futureSelfService.getActiveProfile();
         if (profileData) {
           setProfile(profileData);
@@ -109,13 +118,8 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
         }
       } catch (error) {
         console.error('Error loading future self data:', error);
-        setError('Failed to load profile. Please try again.');
-        
-        // Fallback to localStorage if database fails
-        const savedData = storage.getItem('future-self-data');
-        if (savedData) {
-          setFutureSelf(savedData);
-        }
+        setError('Failed to load profile. Please check your connection and try again.');
+        // No localStorage fallback - show error to user instead
       } finally {
         setIsLoading(false);
       }
@@ -131,8 +135,8 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
 
   const handleWizardComplete = async (wizardData: WizardData) => {
     try {
-      // Profile has already been saved by wizard component
-      // Update local state and localStorage
+      // Profile has already been saved to Supabase by wizard component
+      // Update local state only (no localStorage)
       const updatedFutureSelf = {
         hasProfile: true,
         createdAt: new Date().toISOString(),
@@ -148,8 +152,7 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
       
       setFutureSelf(updatedFutureSelf);
       
-      // IMPORTANT: Update localStorage so ChatScreen knows the profile is complete
-      storage.setItem('future-self-data', updatedFutureSelf);
+      // No localStorage save - data is in Supabase
       
       setShowWizard(false);
       
@@ -169,15 +172,36 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
     setShowWizard(true);
   };
 
-  const handleResetProfile = () => {
+  const handleResetProfile = async () => {
     if (window.confirm('Are you sure you want to reset your profile? This cannot be undone.')) {
       try {
-        storage.removeItem('future-self-data');
-        storage.removeItem('future-self-wizard');
+        setIsLoading(true);
+        
+        // Get current session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setError('Please sign in to reset your profile');
+          return;
+        }
+        
+        // Delete profile from Supabase
+        const { error } = await supabase
+          .from('future_self_profiles')
+          .delete()
+          .eq('user_id', session.user.id);
+        
+        if (error) {
+          throw error;
+        }
+        
+        // Reset local state
         setFutureSelf({ hasProfile: false });
+        setProfile(null);
       } catch (error) {
         console.error('Error resetting profile:', error);
         alert('There was an error resetting your profile. Please try again.');
+      } finally {
+        setIsLoading(false);
       }
     }
   };

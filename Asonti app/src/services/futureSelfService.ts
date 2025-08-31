@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { FutureSelfProfile, Database } from '@/lib/supabase';
 import type { Session, RealtimeChannel } from '@supabase/supabase-js';
+import { retrySupabaseOperation } from '@/utils/retryWithBackoff';
 
 export interface WizardStepData {
   photo_url?: string;
@@ -171,23 +172,31 @@ export class FutureSelfService {
   async getActiveProfile(): Promise<FutureSelfProfile | null> {
     const session = await this.ensureSession();
     
-    const { data: profiles, error } = await supabase
-      .from('future_self_profiles')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .eq('is_active', true);
-    
-    if (error) {
-      console.error('Error fetching active profile:', error);
-      if (error.code === 'PGRST116') {
+    try {
+      const profiles = await retrySupabaseOperation(
+        () => supabase
+          .from('future_self_profiles')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('is_active', true),
+        { 
+          maxRetries: 3,
+          onRetry: (attempt, error) => {
+            console.log(`Retrying getActiveProfile (attempt ${attempt}):`, error.message);
+          }
+        }
+      );
+      
+      // Return first active profile or null
+      return profiles && profiles.length > 0 ? profiles[0] : null;
+    } catch (error: any) {
+      console.error('Error fetching active profile after retries:', error);
+      if (error?.code === 'PGRST116') {
         return null; // No profile found
       }
       // Don't throw, just return null on other errors
       return null;
     }
-    
-    // Return first active profile or null
-    return profiles && profiles.length > 0 ? profiles[0] : null;
   }
 
   /**

@@ -2,10 +2,11 @@ import { Switch } from './ui/switch';
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { ScrollArea } from './ui/scroll-area';
-import { Bell, Moon, HelpCircle, RotateCcw, Trash2, LogOut, Settings } from 'lucide-react';
+import { Bell, Moon, HelpCircle, RotateCcw, Trash2, LogOut, Settings, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { clearAllAppData } from './hooks/useLocalStorage';
+import { userSettingsService, type UserSettings } from '@/services/userSettingsService';
+import { useToast } from './ui/use-toast';
 
 interface SettingsData {
   notifications: boolean;
@@ -21,60 +22,182 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
     notifications: true,
     darkMode: false,
   });
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
 
-  // Load settings from localStorage on component mount
+  // Load settings from Supabase on component mount
   useEffect(() => {
-    const savedSettings = localStorage.getItem('app-settings');
-    if (savedSettings) {
+    const loadSettings = async () => {
+      setIsLoading(true);
       try {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings(parsedSettings);
+        const dbSettings = await userSettingsService.getOrCreateSettings();
+        if (dbSettings) {
+          setSettings({
+            notifications: dbSettings.notifications_enabled ?? true,
+            darkMode: dbSettings.dark_mode ?? false,
+          });
+        }
       } catch (error) {
-        console.error('Error loading settings from localStorage:', error);
+        console.error('Error loading settings:', error);
+        toast({
+          title: "Error loading settings",
+          description: "Using default settings",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
       }
-    }
-  }, []);
+    };
 
-  // Save settings to localStorage whenever settings change
-  useEffect(() => {
-    localStorage.setItem('app-settings', JSON.stringify(settings));
-    
-    // Dispatch custom event to notify other components of settings changes
-    window.dispatchEvent(new CustomEvent('app-settings-updated'));
-  }, [settings]);
+    loadSettings();
+  }, [toast]);
 
-  const updateSetting = (key: keyof SettingsData, value: boolean) => {
+  // No longer save to localStorage - handled by updateSetting function
+
+  const updateSetting = async (key: keyof SettingsData, value: boolean) => {
+    // Update local state immediately for responsive UI
     setSettings(prev => ({
       ...prev,
       [key]: value
     }));
+
+    // Save to Supabase
+    setIsSaving(true);
+    try {
+      const updates: Partial<UserSettings> = {};
+      if (key === 'darkMode') {
+        updates.dark_mode = value;
+      } else if (key === 'notifications') {
+        updates.notifications_enabled = value;
+      }
+
+      await userSettingsService.updateSettings(updates);
+      
+      // Dispatch custom event to notify other components of settings changes
+      window.dispatchEvent(new CustomEvent('app-settings-updated'));
+    } catch (error) {
+      console.error('Error saving setting:', error);
+      // Revert on error
+      setSettings(prev => ({
+        ...prev,
+        [key]: !value
+      }));
+      toast({
+        title: "Error saving setting",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const resetSettings = () => {
+  const resetSettings = async () => {
     const defaultSettings: SettingsData = {
       notifications: true,
       darkMode: false,
     };
     setSettings(defaultSettings);
-    localStorage.setItem('app-settings', JSON.stringify(defaultSettings));
     
-    // Dispatch custom event to notify other components of settings changes
-    window.dispatchEvent(new CustomEvent('app-settings-updated'));
+    setIsSaving(true);
+    try {
+      await userSettingsService.updateSettings({
+        dark_mode: false,
+        notifications_enabled: true,
+      });
+      
+      // Dispatch custom event to notify other components of settings changes
+      window.dispatchEvent(new CustomEvent('app-settings-updated'));
+      
+      toast({
+        title: "Settings reset",
+        description: "Settings have been reset to defaults",
+      });
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      toast({
+        title: "Error resetting settings",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleClearAllData = () => {
+  const handleClearAllData = async () => {
     const confirmed = window.confirm(
       'Are you sure you want to clear all app data? This will delete all chat messages, settings, and future self profiles. This action cannot be undone.'
     );
     if (confirmed) {
-      const success = clearAllAppData();
-      if (success) {
-        alert('All app data has been cleared.');
-        // Reload the page to reset all components
-        window.location.reload();
-      } else {
-        alert('There was an error clearing the data. Please try again.');
+      setIsSaving(true);
+      try {
+        const success = await userSettingsService.clearAllUserData();
+        if (success) {
+          toast({
+            title: "Data cleared",
+            description: "All app data has been cleared",
+          });
+          // Reload the page to reset all components
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          throw new Error('Failed to clear data');
+        }
+      } catch (error) {
+        console.error('Error clearing data:', error);
+        toast({
+          title: "Error clearing data",
+          description: "Please try again",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSaving(false);
       }
+    }
+  };
+
+  const handleClearChatMessages = async () => {
+    setIsSaving(true);
+    try {
+      const success = await userSettingsService.clearChatMessages();
+      if (success) {
+        toast({
+          title: "Messages cleared",
+          description: "Chat messages have been cleared",
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing messages:', error);
+      toast({
+        title: "Error clearing messages",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearFutureSelfData = async () => {
+    setIsSaving(true);
+    try {
+      const success = await userSettingsService.clearFutureSelfData();
+      if (success) {
+        toast({
+          title: "Future self data cleared",
+          description: "Your future self profile has been cleared",
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing future self data:', error);
+      toast({
+        title: "Error clearing data",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -112,6 +235,7 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
               <Switch
                 checked={settings.notifications}
                 onCheckedChange={(value) => updateSetting('notifications', value)}
+                disabled={isLoading || isSaving}
               />
             </div>
           </div>
@@ -132,6 +256,7 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
               <Switch
                 checked={settings.darkMode}
                 onCheckedChange={(value) => updateSetting('darkMode', value)}
+                disabled={isLoading || isSaving}
               />
             </div>
           </div>
@@ -173,30 +298,35 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
             <h3>Data Management</h3>
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                All data is stored locally on your device for development purposes.
+                Your data is securely stored in the cloud.
               </p>
               <div className="space-y-2">
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => {
-                    localStorage.removeItem('chat-messages');
-                  }}
+                  onClick={handleClearChatMessages}
                   className="w-full justify-start"
+                  disabled={isSaving}
                 >
-                  <Trash2 className="w-3 h-3 mr-2" />
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3 mr-2" />
+                  )}
                   Clear Chat Messages
                 </Button>
                 <Button 
                   variant="outline" 
                   size="sm"
-                  onClick={() => {
-                    localStorage.removeItem('future-self-data');
-                    localStorage.removeItem('future-self-wizard');
-                  }}
+                  onClick={handleClearFutureSelfData}
                   className="w-full justify-start"
+                  disabled={isSaving}
                 >
-                  <Trash2 className="w-3 h-3 mr-2" />
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3 mr-2" />
+                  )}
                   Clear Future Self Data
                 </Button>
                 <Button 
@@ -204,8 +334,13 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
                   size="sm"
                   onClick={handleClearAllData}
                   className="w-full justify-start"
+                  disabled={isSaving}
                 >
-                  <Trash2 className="w-3 h-3 mr-2" />
+                  {isSaving ? (
+                    <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3 h-3 mr-2" />
+                  )}
                   Clear All App Data
                 </Button>
               </div>

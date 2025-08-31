@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
-import { storage } from '@/components/hooks/useLocalStorage';
-// Updated to use local responses for development
+import { futureSelfService } from '@/services/futureSelfService';
+// Updated to use Supabase for profile data
 
 export interface ChatMessage {
   id: string;
@@ -36,8 +36,8 @@ class AIChatClient {
         throw new Error('Please sign in to chat with your future self');
       }
       
-      // Get future self profile from localStorage
-      const futureSelfData = storage.getItem('future-self-data');
+      // Get future self profile from Supabase
+      const futureSelfData = await futureSelfService.getActiveProfile();
       
       // Try to use the local AI server if available
       try {

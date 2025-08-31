@@ -14,6 +14,7 @@ import { profileMigration } from './utils/profileMigration';
 import { profileGuard } from './services/profileGuard';
 import { ToastProvider } from './components/ui/use-toast';
 import type { ProfileCompletionStatus } from './services/profileGuard';
+import { userSettingsService } from './services/userSettingsService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('chat');
@@ -36,25 +37,26 @@ export default function App() {
 
   // Check auth status and apply dark mode on app load
   useEffect(() => {
-    // Load and apply dark mode setting
-    const loadDarkMode = () => {
-      const savedSettings = localStorage.getItem('app-settings');
-      if (savedSettings) {
-        try {
-          const parsedSettings = JSON.parse(savedSettings);
-          if (parsedSettings.darkMode) {
+    // Load and apply dark mode setting from Supabase
+    const loadDarkMode = async () => {
+      try {
+        const settings = await userSettingsService.getOrCreateSettings();
+        if (settings) {
+          if (settings.dark_mode) {
             document.documentElement.classList.add('dark');
           } else {
             document.documentElement.classList.remove('dark');
           }
-        } catch (error) {
-          console.error('Error loading dark mode setting:', error);
         }
+      } catch (error) {
+        console.error('Error loading dark mode setting:', error);
+        // Default to light mode if error
+        document.documentElement.classList.remove('dark');
       }
     };
 
     loadDarkMode();
-  }, []);
+  }, [user]); // Re-run when user changes
 
   // Update loading state when auth loading completes
   useEffect(() => {
@@ -149,19 +151,18 @@ export default function App() {
     window.addEventListener('storage', handleStorageChange);
 
     // Also listen for custom events for same-tab updates
-    const handleSettingsUpdate = () => {
-      const savedSettings = localStorage.getItem('app-settings');
-      if (savedSettings) {
-        try {
-          const parsedSettings = JSON.parse(savedSettings);
-          if (parsedSettings.darkMode) {
+    const handleSettingsUpdate = async () => {
+      try {
+        const settings = await userSettingsService.getOrCreateSettings();
+        if (settings) {
+          if (settings.dark_mode) {
             document.documentElement.classList.add('dark');
           } else {
             document.documentElement.classList.remove('dark');
           }
-        } catch (error) {
-          console.error('Error applying dark mode:', error);
         }
+      } catch (error) {
+        console.error('Error applying dark mode:', error);
       }
     };
 

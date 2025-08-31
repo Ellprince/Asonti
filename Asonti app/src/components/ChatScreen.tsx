@@ -7,6 +7,8 @@ import { storage } from './hooks/useLocalStorage';
 import { aiChatClient } from '@/services/aiChatClient';
 import { TypingIndicator } from './TypingIndicator';
 import { StreamingText } from './StreamingText';
+import { supabase } from '@/lib/supabase';
+import { useToast } from './ui/use-toast';
 
 interface Message {
   id: string;
@@ -34,39 +36,130 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const desktopScrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
-  // Load profile data for avatar
+  // Load profile data for avatar from Supabase
   useEffect(() => {
-    const savedData = storage.getItem('future-self-data');
-    if (savedData) {
-      setFutureSelf({
-        hasProfile: Boolean(savedData.hasProfile),
-        photo: savedData.photo,
-      });
-    }
+    const loadProfile = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const { data: profile, error } = await supabase
+          .from('future_self_profiles')
+          .select('photo_url, photo_type')
+          .eq('user_id', session.user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (profile) {
+          setFutureSelf({
+            hasProfile: true,
+            photo: profile.photo_url,
+          });
+        }
+      } catch (error) {
+        console.error('Error loading profile for avatar:', error);
+        // Profile might not exist yet, that's OK
+      }
+    };
+
+    loadProfile();
   }, []);
 
-  // Load messages from localStorage on component mount
+  // Load messages from Supabase on component mount
   useEffect(() => {
-    const savedMessages = localStorage.getItem('chat-messages');
-    if (savedMessages) {
+    const loadMessages = async () => {
       try {
-        const parsedMessages = JSON.parse(savedMessages).map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }));
-        setMessages(parsedMessages);
-        // Sync with chat service for context
-        aiChatClient.setHistory(parsedMessages);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setDefaultMessage();
+          return;
+        }
+
+        // Load messages from database
+        const { data: dbMessages, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: true });
+
+        if (error) {
+          console.error('Error loading messages from database:', error);
+          setDefaultMessage();
+          return;
+        }
+
+        if (dbMessages && dbMessages.length > 0) {
+          const parsedMessages = dbMessages.map((msg: any) => ({
+            id: msg.id,
+            text: msg.content,
+            isUser: msg.is_user,
+            timestamp: new Date(msg.created_at)
+          }));
+          setMessages(parsedMessages);
+          // Sync with chat service for context
+          aiChatClient.setHistory(parsedMessages);
+        } else {
+          setDefaultMessage();
+        }
       } catch (error) {
-        console.error('Error loading messages from localStorage:', error);
-        // Set default welcome message if loading fails
+        console.error('Error loading messages:', error);
         setDefaultMessage();
       }
-    } else {
-      // Set default welcome message if no saved messages
-      setDefaultMessage();
-    }
+    };
+
+    loadMessages();
+  }, []);
+
+  // Separate effect for real-time subscription
+  useEffect(() => {
+    let channel: any;
+
+    const setupRealtimeSubscription = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      channel = supabase
+        .channel(`chat_messages_${session.user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'chat_messages',
+            filter: `user_id=eq.${session.user.id}`
+          },
+          (payload) => {
+            // Add all new messages (both user and AI)
+            const newMessage: Message = {
+              id: payload.new.id,
+              text: payload.new.content,
+              isUser: payload.new.is_user,
+              timestamp: new Date(payload.new.created_at)
+            };
+            
+            // Check if message already exists to avoid duplicates
+            setMessages(prev => {
+              const exists = prev.some(msg => msg.id === newMessage.id);
+              if (!exists) {
+                return [...prev, newMessage];
+              }
+              return prev;
+            });
+          }
+        )
+        .subscribe();
+    };
+
+    setupRealtimeSubscription();
+
+    // Cleanup subscription
+    return () => {
+      if (channel) {
+        channel.unsubscribe();
+      }
+    };
   }, []);
 
   const setDefaultMessage = () => {
@@ -151,12 +244,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
     );
   };
 
-  // Save messages to localStorage whenever messages change
-  useEffect(() => {
-    if (messages.length > 0) {
-      localStorage.setItem('chat-messages', JSON.stringify(messages));
-    }
-  }, [messages]);
+  // Messages are now saved to Supabase when sent, no need for localStorage
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -181,6 +269,17 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading) return;
 
+    // Get current session
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast({
+        title: "Not authenticated",
+        description: "Please sign in to send messages",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const userMessage: Message = {
       id: Date.now().toString(),
       text: inputText,
@@ -188,6 +287,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
       timestamp: new Date(),
     };
 
+    // Optimistically add to UI
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
@@ -195,6 +295,20 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
     setError(null);
 
     try {
+      // Save user message to database
+      const { error: saveError } = await supabase
+        .from('chat_messages')
+        .insert({
+          user_id: session.user.id,
+          content: userMessage.text,
+          is_user: true,
+          created_at: new Date().toISOString()
+        });
+
+      if (saveError) {
+        console.error('Failed to save message:', saveError);
+      }
+
       // Send message to AI service
       const { response, error: apiError } = await aiChatClient.sendMessage(userMessage.text);
       
@@ -205,7 +319,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
       // Stop typing indicator and add streaming response with a small delay
       const aiResponseId = (Date.now() + 1).toString();
       
-      setTimeout(() => {
+      setTimeout(async () => {
         setIsTyping(false);
         
         const aiResponse: Message = {
@@ -217,6 +331,21 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
         };
         
         setMessages(prev => [...prev, aiResponse]);
+
+        // Save AI response to database
+        const { error: aiSaveError } = await supabase
+          .from('chat_messages')
+          .insert({
+            user_id: session.user.id,
+            content: response,
+            is_user: false,
+            model_used: 'gpt-4o',
+            created_at: new Date().toISOString()
+          });
+
+        if (aiSaveError) {
+          console.error('Failed to save AI response:', aiSaveError);
+        }
         
         // After streaming completes, mark as not streaming
         setTimeout(() => {

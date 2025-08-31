@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 
 interface PhotoUploadStepProps {
   currentPhoto?: string;
-  onPhotoChange: (photo: string) => void;
+  onPhotoChange: (photo: string, agedPhotoUrl?: string) => void;
 }
 
 // Generate a consistent avatar placeholder based on a seed
@@ -67,8 +67,8 @@ export function PhotoUploadStep({ currentPhoto, onPhotoChange }: PhotoUploadStep
       if (data.predictionId === predictionId) {
         setAgingComplete(true);
         setAgingInBackground(false);
-        // Store the aged URL in localStorage for the CompletionStep
-        localStorage.setItem('aged-photo-url', data.agedUrl);
+        // Pass aged URL through wizard data
+        onPhotoChange(currentPhoto || '', data.agedUrl);
         
         // Show subtle animation
         showAgingAnimation();
@@ -79,8 +79,8 @@ export function PhotoUploadStep({ currentPhoto, onPhotoChange }: PhotoUploadStep
       if (data.predictionId === predictionId) {
         // Silently fallback to original
         setAgingInBackground(false);
-        // Clear any aged photo URL
-        localStorage.removeItem('aged-photo-url');
+        // Clear any aged photo URL by passing undefined
+        onPhotoChange(currentPhoto || '', undefined);
       }
     };
     
@@ -144,8 +144,8 @@ export function PhotoUploadStep({ currentPhoto, onPhotoChange }: PhotoUploadStep
           const agingResult = await photoAgingService.agePhoto(publicUrl);
           
           if (agingResult.success && agingResult.agedPhotoUrl) {
-            // Store aged URL for CompletionStep
-            localStorage.setItem('aged-photo-url', agingResult.agedPhotoUrl);
+            // Pass aged URL through wizard data
+            onPhotoChange(photoUrl, agingResult.agedPhotoUrl);
             setAgingComplete(true);
             showAgingAnimation();
           }
