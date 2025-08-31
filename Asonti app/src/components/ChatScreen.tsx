@@ -267,7 +267,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   }, [messages, scrollToBottom]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
+    if (!inputText || !inputText.trim() || isLoading) return;
 
     // Get current session
     const { data: { session } } = await supabase.auth.getSession();

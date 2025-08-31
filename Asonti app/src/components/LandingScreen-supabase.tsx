@@ -63,7 +63,10 @@ export function LandingScreen({ onRegistrationComplete }: LandingScreenProps) {
       ? ['name', 'email', 'password']
       : ['email', 'password'];
     
-    const isValid = requiredFields.every(field => formData[field as keyof typeof formData].trim());
+    const isValid = requiredFields.every(field => {
+      const value = formData[field as keyof typeof formData];
+      return value && value.trim();
+    });
     
     if (!isValid) {
       setError('Please fill in all required fields');
@@ -81,9 +84,9 @@ export function LandingScreen({ onRegistrationComplete }: LandingScreenProps) {
     try {
       if (activeTab === 'signup') {
         const { error } = await signUp(
-          formData.email.trim(),
-          formData.password,
-          formData.name.trim()
+          formData.email?.trim() || '',
+          formData.password || '',
+          formData.name?.trim() || ''
         );
         
         if (error) {
@@ -97,8 +100,8 @@ export function LandingScreen({ onRegistrationComplete }: LandingScreenProps) {
         }
       } else {
         const { error } = await signIn(
-          formData.email.trim(),
-          formData.password
+          formData.email?.trim() || '',
+          formData.password || ''
         );
         
         if (error) {
@@ -120,8 +123,8 @@ export function LandingScreen({ onRegistrationComplete }: LandingScreenProps) {
   };
 
   const isFormValid = activeTab === 'signup' 
-    ? formData.name.trim() && formData.email.trim() && formData.password.trim()
-    : formData.email.trim() && formData.password.trim();
+    ? formData.name?.trim() && formData.email?.trim() && formData.password?.trim()
+    : formData.email?.trim() && formData.password?.trim();
 
   return (
     <div className="min-h-screen bg-background overflow-y-auto">

@@ -108,15 +108,15 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
           setProfile(profileData);
           setFutureSelf({
             hasProfile: true,
-            createdAt: profileData.created_at,
-            photo: profileData.photo_url,
+            createdAt: profileData.created_at || '',
+            photo: profileData.photo_url || '',
             attributes: profileData.attributes || {},
-            hope: profileData.hope,
-            fear: profileData.fear,
+            hope: profileData.hope || '',
+            fear: profileData.fear || '',
             currentValues: Array.isArray(profileData.current_values) ? profileData.current_values : [],
             futureValues: Array.isArray(profileData.future_values) ? profileData.future_values : [],
-            feelings: profileData.feelings,
-            dayInLife: profileData.day_in_life,
+            feelings: profileData.feelings || '',
+            dayInLife: profileData.day_in_life || '',
           });
         } else {
           // No profile found
@@ -164,14 +164,14 @@ export function ProfileScreen({ showOnboarding = false }: ProfileScreenProps) {
       const updatedFutureSelf = {
         hasProfile: true,
         createdAt: new Date().toISOString(),
-        photo: wizardData.photo,
-        attributes: wizardData.attributes,
-        hope: wizardData.hope,
-        fear: wizardData.fear,
-        currentValues: wizardData.currentValues,
-        futureValues: wizardData.futureValues,
-        feelings: wizardData.feelings,
-        dayInLife: wizardData.dayInLife,
+        photo: wizardData.photo || '',
+        attributes: wizardData.attributes || {},
+        hope: wizardData.hope || '',
+        fear: wizardData.fear || '',
+        currentValues: wizardData.currentValues || [],
+        futureValues: wizardData.futureValues || [],
+        feelings: wizardData.feelings || '',
+        dayInLife: wizardData.dayInLife || '',
       };
       
       setFutureSelf(updatedFutureSelf);
