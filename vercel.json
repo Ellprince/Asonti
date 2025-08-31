@@ -2,13 +2,6 @@
   "buildCommand": "cd \"Asonti app\" && npm install && npm run build",
   "outputDirectory": "Asonti app/build",
   "installCommand": "cd \"Asonti app\" && npm install",
-  "framework": null,
-  "functions": {
-    "Asonti app/api/*.ts": {
-      "runtime": "@vercel/edge",
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     {
       "source": "/api/:path*",
