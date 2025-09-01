@@ -40,7 +40,7 @@ export function StreamingText({ text, onComplete, speed = 60 }: StreamingTextPro
 
   return (
     <div className="relative">
-      <p>{displayedText}</p>
+      <div className="whitespace-pre-wrap break-words">{displayedText}</div>
       {!isComplete && (
         <motion.span
           className="inline-block w-0.5 h-4 bg-current ml-0.5"

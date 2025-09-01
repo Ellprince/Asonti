@@ -531,7 +531,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
                   {message.isStreaming ? (
                     <StreamingText text={message.text} speed={60} />
                   ) : (
-                    <p>{message.text}</p>
+                    <div className="whitespace-pre-wrap break-words">{message.text}</div>
                   )}
                   <p className="text-xs mt-1 opacity-70">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -589,7 +589,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
                   {message.isStreaming ? (
                     <StreamingText text={message.text} speed={60} />
                   ) : (
-                    <p>{message.text}</p>
+                    <div className="whitespace-pre-wrap break-words">{message.text}</div>
                   )}
                   <p className="text-xs mt-1 opacity-70">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
