@@ -1,8 +1,12 @@
 {
-  "buildCommand": "cd \"Asonti app\" && npm run build",
-  "outputDirectory": "Asonti app/dist",
-  "framework": "vite",
+  "functions": {
+    "api/*.ts": {
+      "runtime": "@vercel/edge",
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
