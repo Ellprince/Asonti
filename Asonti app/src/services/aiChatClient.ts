@@ -92,18 +92,44 @@ class AIChatClient {
             const data = await response.json();
             aiText = data.response || '';
           } else {
-            // Read the stream and combine chunks (simple approach)
+            // Parse SSE stream from Edge function
             const reader = response.body?.getReader();
             const decoder = new TextDecoder();
             if (reader) {
+              let buffer = '';
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
-                aiText += decoder.decode(value, { stream: true });
+                buffer += decoder.decode(value, { stream: true });
               }
-              aiText += decoder.decode();
+              buffer += decoder.decode();
+              
+              // Parse SSE format - extract content from data: lines
+              const lines = buffer.split('\n');
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6); // Remove 'data: ' prefix
+                  if (data === '[DONE]') continue;
+                  try {
+                    // Try to parse as JSON first (some SSE formats send JSON)
+                    const parsed = JSON.parse(data);
+                    if (typeof parsed === 'string') {
+                      aiText += parsed;
+                    } else if (parsed.content) {
+                      aiText += parsed.content;
+                    } else if (parsed.text) {
+                      aiText += parsed.text;
+                    }
+                  } catch {
+                    // If not JSON, treat as plain text
+                    if (data.trim()) {
+                      aiText += data;
+                    }
+                  }
+                }
+              }
             }
-            // Try to extract final message if server formatted; else use raw
+            // Clean up the text
             aiText = aiText.trim() || "I'm here.";
           }
 
