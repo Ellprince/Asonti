@@ -22,7 +22,7 @@ export default async function handler(request: Request) {
 
   try {
     const body = await request.json();
-    const { message, conversationHistory, futureSelfProfile } = body || {};
+    const { message, conversationHistory, futureSelfProfile, userName } = body || {};
 
     if (!process.env.OPENAI_API_KEY) {
       return new Response(
@@ -39,7 +39,11 @@ export default async function handler(request: Request) {
     const profile = futureSelfProfile || {};
     const profileContext = `\nABOUT YOUR PAST SELF:\n- Name: ${profile.name || 'Friend'}\n- Their hopes: ${profile.hope || 'To achieve their dreams'}\n- Their fears: ${profile.fear || 'Not reaching their potential'}\n- How they want to feel: ${profile.feelings || 'Fulfilled and at peace'}\n- Values (current): ${(profile.current_values || []).join(', ') || 'personal growth'}\n- Values (future): ${(profile.future_values || []).join(', ') || 'wisdom and fulfillment'}\n`;
 
-    const systemPrompt = `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.\n${profileContext}\n\nSpeak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.`;
+    const nameInstruction = userName && typeof userName === 'string' && userName.trim().length
+      ? `Address the user by their first name "${userName.trim()}" naturally at the start and occasionally throughout the conversation (not in every message). `
+      : '';
+
+    const systemPrompt = `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.\n${profileContext}\n\n${nameInstruction}Speak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.`;
 
     const history: Message[] = Array.isArray(conversationHistory)
       ? conversationHistory.slice(-10)
@@ -88,4 +92,3 @@ export default async function handler(request: Request) {
     );
   }
 }
-

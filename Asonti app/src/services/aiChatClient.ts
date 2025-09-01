@@ -51,6 +51,21 @@ class AIChatClient {
         ? 'http://localhost:3002/api/chat'
         : '/api/chat';
 
+      // Derive first name if not explicitly provided
+      let firstName = userName;
+      if (!firstName) {
+        const meta: any = (session as any).user?.user_metadata || {};
+        const fullName: string | undefined = meta.full_name || meta.name;
+        if (fullName && typeof fullName === 'string') {
+          firstName = fullName.trim().split(/\s+/)[0];
+        } else {
+          const email: string | undefined = (session as any).user?.email;
+          if (email && typeof email === 'string') {
+            firstName = email.split('@')[0];
+          }
+        }
+      }
+
       try {
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -63,7 +78,7 @@ class AIChatClient {
             message,
             conversationHistory: apiHistory.slice(-10),
             futureSelfProfile: futureSelfData,
-            userName: userName
+            userName: firstName
           })
         });
 
