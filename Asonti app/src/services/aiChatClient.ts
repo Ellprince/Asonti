@@ -111,13 +111,16 @@ class AIChatClient {
         }
       } catch (serverError) {
         console.error('AI service error:', serverError);
-        console.log('Using fallback responses - AI service temporarily unavailable');
+        // Return error message to user instead of fallback
+        return {
+          response: "I'm experiencing technical difficulties connecting to my AI service. Our team has been notified and is working to resolve this issue. Please try again in a few moments.",
+          error: 'AI service unavailable'
+        };
       }
       
-      // Fallback to simulated responses if server isn't reachable
-      // Add a note that we're using fallback mode
-      const response = this.generateLocalResponse(message, futureSelfData, userName);
-      console.warn('⚠️ Using local fallback responses. For full AI experience, ensure OpenAI API is configured.');
+      // This fallback should never be reached if API is properly configured
+      console.error('⚠️ Critical: API endpoint not responding and no error caught');
+      const response = "I'm temporarily unable to connect to my full consciousness. Please refresh the page or try again in a moment.";
       
       // Add messages to history
       this.conversationHistory.push({
