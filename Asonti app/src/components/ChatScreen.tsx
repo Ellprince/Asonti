@@ -37,6 +37,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [futureSelf, setFutureSelf] = useState<FutureSelfData>({ hasProfile: false });
   const [userProfile, setUserProfile] = useState<UserProfile>({});
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,11 +94,47 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
           return;
         }
 
+        // First, get or create a conversation
+        let activeConversationId = conversationId;
+        
+        if (!activeConversationId) {
+          // Check for existing conversation
+          const { data: existingConv } = await supabase
+            .from('chat_conversations')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (existingConv) {
+            activeConversationId = existingConv.id;
+          } else {
+            // Create new conversation
+            const { data: newConv, error: convError } = await supabase
+              .from('chat_conversations')
+              .insert({
+                user_id: session.user.id,
+                title: 'Chat with Future Self',
+                created_at: new Date().toISOString()
+              })
+              .select()
+              .single();
+            
+            if (convError) {
+              console.error('Error creating conversation:', convError);
+              return;
+            }
+            activeConversationId = newConv.id;
+          }
+          setConversationId(activeConversationId);
+        }
+        
         // Load messages from database
         const { data: dbMessages, error } = await supabase
           .from('chat_messages')
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('conversation_id', activeConversationId)
           .order('created_at', { ascending: true });
 
         if (error) {
@@ -313,10 +350,39 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
     setError(null);
 
     try {
+      // Ensure we have a conversation ID
+      let currentConversationId = conversationId;
+      
+      if (!currentConversationId) {
+        // Create conversation if it doesn't exist
+        const { data: newConv, error: convError } = await supabase
+          .from('chat_conversations')
+          .insert({
+            user_id: session.user.id,
+            title: 'Chat with Future Self',
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (convError || !newConv) {
+          console.error('Error creating conversation:', convError);
+          toast({
+            title: "Error",
+            description: "Failed to start conversation. Please try again.",
+            variant: "destructive"
+          });
+          return;
+        }
+        currentConversationId = newConv.id;
+        setConversationId(currentConversationId);
+      }
+      
       // Save user message to database
       const { error: saveError } = await supabase
         .from('chat_messages')
         .insert({
+          conversation_id: currentConversationId,
           user_id: session.user.id,
           content: userMessage.text,
           is_user: true,
@@ -354,6 +420,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
         const { error: aiSaveError } = await supabase
           .from('chat_messages')
           .insert({
+            conversation_id: currentConversationId,
             user_id: session.user.id,
             content: response,
             is_user: false,
