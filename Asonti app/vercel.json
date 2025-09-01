@@ -1,13 +1,8 @@
 {
-  "functions": {
-    "api/chat/route.js": {
-      "maxDuration": 30
-    }
-  },
+  "buildCommand": "cd \"Asonti app\" && npm run build",
+  "outputDirectory": "Asonti app/dist",
+  "framework": "vite",
   "rewrites": [
-    {
-      "source": "/api/chat",
-      "destination": "/api/chat/route"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

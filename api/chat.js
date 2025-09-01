@@ -1,10 +1,3 @@
-import OpenAI from 'openai';
-
-// Initialize OpenAI with the API key from environment variables
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
-
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -40,6 +33,12 @@ export default async function handler(req, res) {
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
+
+    // Dynamic import of OpenAI
+    const { default: OpenAI } = await import('openai');
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
 
     // Build system prompt
     const firstName = userName?.split(' ')[0] || '';
