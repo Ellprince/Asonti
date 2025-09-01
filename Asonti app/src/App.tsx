@@ -65,10 +65,12 @@ export default function App() {
     }
   }, [authLoading]);
 
-  // Check profile completion status
+  // Check profile completion status + subscribe for realtime updates
   useEffect(() => {
-    const checkProfile = async () => {
-      if (!user) {
+    let unsubscribe: (() => void) | undefined;
+
+    const run = async () => {
+      if (!user?.id) {
         setCheckingProfile(false);
         setProfileComplete(false);
         return;
@@ -79,14 +81,13 @@ export default function App() {
       setProfileComplete(status.isComplete);
       setCheckingProfile(false);
 
-      // If no profile, switch to profile tab and show onboarding message
       if (!status.isComplete) {
         setActiveTab('profile');
         setShowOnboardingMessage(true);
       }
 
-      // Subscribe to profile changes for real-time updates
-      const unsubscribe = await profileGuard.subscribeToProfileChanges(
+      // Subscribe to realtime profile changes
+      unsubscribe = await profileGuard.subscribeToProfileChanges(
         user.id,
         (newStatus: ProfileCompletionStatus) => {
           setProfileComplete(newStatus.isComplete);
@@ -95,14 +96,14 @@ export default function App() {
           }
         }
       );
-
-      return () => {
-        unsubscribe();
-      };
     };
 
-    checkProfile();
-  }, [user]);
+    run();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [user?.id]);
 
   // Run migration when user logs in
   useEffect(() => {
