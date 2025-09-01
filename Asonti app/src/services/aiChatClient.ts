@@ -110,11 +110,14 @@ class AIChatClient {
           return { response: aiText };
         }
       } catch (serverError) {
-        console.log('Edge/local AI server not available, using fallback responses');
+        console.error('AI service error:', serverError);
+        console.log('Using fallback responses - AI service temporarily unavailable');
       }
       
       // Fallback to simulated responses if server isn't reachable
+      // Add a note that we're using fallback mode
       const response = this.generateLocalResponse(message, futureSelfData, userName);
+      console.warn('⚠️ Using local fallback responses. For full AI experience, ensure OpenAI API is configured.');
       
       // Add messages to history
       this.conversationHistory.push({
@@ -181,12 +184,33 @@ class AIChatClient {
         : "The future holds incredible opportunities for growth and fulfillment. You'll be amazed at how capable you become and the challenges you'll overcome. Trust in your ability to adapt and thrive.";
     }
     
-    // Default response with profile awareness
-    if (profile?.feelings) {
-      return `That's a thoughtful question. ${profile.feelings} - these feelings you have about your future self are valid and important. They're guiding you toward who you're meant to become. What specific aspect would you like to explore further?`;
+    if (lowerMessage.includes('goal') || lowerMessage.includes('month') || lowerMessage.includes('plan')) {
+      const values = profile?.future_values?.join(', ') || 'growth, authenticity, and purpose';
+      return `For the coming month, focus on small, consistent actions aligned with ${values}. Start with one thing that scares you but excites you - that's usually where the most growth happens. I remember taking similar first steps, and they compound over time into remarkable changes.`;
     }
     
-    return "That's an insightful question. From my perspective 10 years ahead, I can see how every experience you're having now is shaping our journey. Each challenge becomes a strength, each doubt transforms into wisdom. What specific aspect of this would you like to explore?";
+    if (lowerMessage.includes('specific') || lowerMessage.includes('more') || lowerMessage.includes('detail')) {
+      return `Let me be more specific. ${profile?.hope ? `Your journey toward ${profile.hope} ` : 'Your path '}requires both patience and bold action. Focus on building skills that compound over time, nurturing relationships that matter, and staying true to your core values even when it's difficult. The specifics will reveal themselves as you take action.`;
+    }
+    
+    // Default response with more variety based on message content
+    const responses = [
+      "From my perspective 10 years ahead, I can see how every experience shapes our journey. Each challenge becomes a strength, each doubt transforms into wisdom.",
+      "Looking back from where I am now, I understand exactly what you're going through. The path ahead has unexpected turns, but each one leads to growth.",
+      "That resonates deeply with me. I remember having similar thoughts at your stage. Let me share what I've learned since then.",
+      "I've been exactly where you are. The uncertainty you feel now becomes clarity with time and experience.",
+      "Your instincts are guiding you well. Trust the process - every step you take now contributes to who we become."
+    ];
+    
+    // Add some context from profile if available
+    const profileContext = profile?.hope 
+      ? ` Remember, your hope of ${profile.hope} is what drives us forward.`
+      : '';
+    
+    // Select a random response to avoid repetition
+    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+    
+    return randomResponse + profileContext;
   }
   
   clearHistory(): void {
