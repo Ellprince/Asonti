@@ -20,7 +20,7 @@ const openai = new OpenAI({
 
 app.post('/api/chat', async (req, res) => {
   try {
-    const { message, conversationHistory, futureSelfProfile } = req.body;
+    const { message, conversationHistory, futureSelfProfile, userName } = req.body;
     
     if (!process.env.OPENAI_API_KEY) {
       return res.status(500).json({ 
@@ -29,6 +29,7 @@ app.post('/api/chat', async (req, res) => {
       });
     }
 
+    const firstName = userName?.split(' ')[0] || '';
     const systemPrompt = `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.
 ${futureSelfProfile ? `
 ABOUT YOUR PAST SELF:
@@ -37,7 +38,7 @@ ABOUT YOUR PAST SELF:
 - How they want to feel: ${futureSelfProfile.feelings || 'Fulfilled and at peace'}
 ` : ''}
 
-You are wise, compassionate, and understanding. Speak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.`;
+You are wise, compassionate, and understanding. ${firstName ? `Address the user by their first name "${firstName}" naturally in conversation, especially in your first response and occasionally throughout the conversation. ` : ''}Speak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },

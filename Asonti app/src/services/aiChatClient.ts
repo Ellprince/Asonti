@@ -28,7 +28,7 @@ class AIChatClient {
     return AIChatClient.instance;
   }
   
-  async sendMessage(message: string): Promise<ChatResponse> {
+  async sendMessage(message: string, userName?: string): Promise<ChatResponse> {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -62,7 +62,8 @@ class AIChatClient {
           body: JSON.stringify({
             message,
             conversationHistory: apiHistory.slice(-10),
-            futureSelfProfile: futureSelfData
+            futureSelfProfile: futureSelfData,
+            userName: userName
           })
         });
 
@@ -113,7 +114,7 @@ class AIChatClient {
       }
       
       // Fallback to simulated responses if server isn't reachable
-      const response = this.generateLocalResponse(message, futureSelfData);
+      const response = this.generateLocalResponse(message, futureSelfData, userName);
       
       // Add messages to history
       this.conversationHistory.push({
@@ -144,15 +145,17 @@ class AIChatClient {
     }
   }
   
-  private generateLocalResponse(message: string, profile: any): string {
+  private generateLocalResponse(message: string, profile: any, userName?: string): string {
     // Generate a contextual response based on the user's profile
     const lowerMessage = message.toLowerCase();
+    const firstName = userName?.split(' ')[0] || '';
     
     // Base responses that adapt to profile
     if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+      const greeting = firstName ? `Hello ${firstName}!` : 'Hello!';
       return profile?.name 
-        ? `Hello ${profile.name}! It's wonderful to connect with you from 10 years in the future. I remember being where you are now, filled with ${profile.hope ? 'hope about ' + profile.hope : 'dreams and aspirations'}. How can I help guide you today?`
-        : "Hello! It's amazing to connect with you from 10 years in the future. I'm here to share the wisdom and insights I've gained on our journey. What would you like to know?";
+        ? `${greeting} It's wonderful to connect with you from 10 years in the future. I remember being where you are now, filled with ${profile.hope ? 'hope about ' + profile.hope : 'dreams and aspirations'}. How can I help guide you today?`
+        : `${greeting} It's amazing to connect with you from 10 years in the future. I'm here to share the wisdom and insights I've gained on our journey. What would you like to know?`;
     }
     
     if (lowerMessage.includes('how are you') || lowerMessage.includes("how's life") || lowerMessage.includes('hows life')) {

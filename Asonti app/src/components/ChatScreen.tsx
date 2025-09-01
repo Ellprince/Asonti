@@ -23,6 +23,10 @@ interface FutureSelfData {
   photo?: string;
 }
 
+interface UserProfile {
+  full_name?: string;
+}
+
 interface ChatScreenProps {
   scrollToBottom?: () => void;
   activeTab?: string;
@@ -32,6 +36,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [futureSelf, setFutureSelf] = useState<FutureSelfData>({ hasProfile: false });
+  const [userProfile, setUserProfile] = useState<UserProfile>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +49,17 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
+
+        // Fetch user profile for name
+        const { data: userProfileData } = await supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', session.user.id)
+          .single();
+
+        if (userProfileData?.full_name) {
+          setUserProfile({ full_name: userProfileData.full_name });
+        }
 
         const { data: profile, error } = await supabase
           .from('future_self_profiles')
@@ -110,7 +126,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
     };
 
     loadMessages();
-  }, []);
+  }, [userProfile]);
 
   // Separate effect for real-time subscription
   useEffect(() => {
@@ -163,9 +179,11 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
   }, []);
 
   const setDefaultMessage = () => {
+    const firstName = userProfile.full_name?.split(' ')[0] || '';
+    const greeting = firstName ? `Hello ${firstName}!` : 'Hello!';
     const welcomeMessage: Message = {
       id: '1',
-      text: 'Hello! I\'m here to help answer your questions. What would you like to know?',
+      text: `${greeting} I'm here to help answer your questions. What would you like to know?`,
       isUser: false,
       timestamp: new Date(),
     };
@@ -310,7 +328,7 @@ export function ChatScreen({ scrollToBottom, activeTab }: ChatScreenProps) {
       }
 
       // Send message to AI service
-      const { response, error: apiError } = await aiChatClient.sendMessage(userMessage.text);
+      const { response, error: apiError } = await aiChatClient.sendMessage(userMessage.text, userProfile.full_name);
       
       if (apiError) {
         console.warn('AI service notice:', apiError);
