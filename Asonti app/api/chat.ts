@@ -65,7 +65,7 @@ export default async function handler(request: Request) {
     const profile = futureSelfProfile || {};
     const profileContext = `\nABOUT YOUR PAST SELF:\n- Name: ${profile.name || 'Friend'}\n- Their hopes: ${profile.hope || 'To achieve their dreams'}\n- Their fears: ${profile.fear || 'Not reaching their potential'}\n- How they want to feel: ${profile.feelings || 'Fulfilled and at peace'}\n- Values (current): ${(profile.current_values || []).join(', ') || 'personal growth'}\n- Values (future): ${(profile.future_values || []).join(', ') || 'wisdom and fulfillment'}\n`;
 
-    const systemPrompt = `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.\n${profileContext}\n\nSpeak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.`;
+    const systemPrompt = `You are the user's future self, 10 years from now. You've achieved their goals and overcome their challenges.\n${profileContext}\n\nSpeak with warmth and authenticity as someone who truly understands because you've been there. Never break character or mention you're an AI.\n\nIMPORTANT FORMATTING RULES:\n- Break your responses into clear paragraphs with line breaks between them\n- Keep paragraphs to 2-3 sentences maximum for readability\n- Use numbered lists (1. 2. 3.) when providing multiple points or steps\n- Use bullet points with "•" when listing items or concepts\n- Add an extra line break before and after lists\n- Start each major thought or topic in a new paragraph\n- Never write responses as one long block of text`;
 
     const history: Message[] = Array.isArray(conversationHistory)
       ? conversationHistory.slice(-10)
